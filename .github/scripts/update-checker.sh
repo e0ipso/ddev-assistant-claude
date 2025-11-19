@@ -2,9 +2,11 @@
 
 set -o errexit
 set -o nounset
-set -o pipefail
 
 UPSTREAM=https://github.com/ddev/ddev-addon-template/blob/main
+
+# List to store info messages
+info_messages=()
 
 # List to store actions
 actions=()
@@ -53,37 +55,106 @@ check_readme() {
 check_install_yaml() {
     local install_yaml="install.yaml"
 
+    # Minimum required DDEV version v1.24.10
+    local min_ddev_major=1
+    local min_ddev_minor=24
+    local min_ddev_patch=10
+
     if [[ -f "$install_yaml" ]]; then
-        # Check for ddev_version_constraint
-        if ! grep -q "^ddev_version_constraint: '>= v1\.24\.[3-9][0-9]*'" "$install_yaml" && ! grep -q "^ddev_version_constraint: '>= v1\.2[5-9]\." "$install_yaml"; then
-            actions+=("install.yaml should contain 'ddev_version_constraint: \">= v1.24.3\"' or higher, see upstream file $UPSTREAM/$install_yaml")
+        # Check for ddev_version_constraint >= minimum required version
+        local has_valid_version=false
+        if grep -q "^ddev_version_constraint:" "$install_yaml"; then
+            # Extract the version number from the constraint (handles both single and double quotes)
+            local version_string
+            version_string=$(grep "^ddev_version_constraint:" "$install_yaml" | head -1 | sed "s/^ddev_version_constraint: ['\"]>= v//; s/['\"].*//" | grep -o "^[0-9.]*")
+
+            if [[ -n "$version_string" ]]; then
+                # Split version into components
+                local major minor patch
+                IFS='.' read -r major minor patch <<< "$version_string"
+                major=${major:-0}
+                minor=${minor:-0}
+                patch=${patch:-0}
+
+                # Check if version is >= minimum required version
+                if (( major > min_ddev_major )) || \
+                   (( major == min_ddev_major && minor > min_ddev_minor )) || \
+                   (( major == min_ddev_major && minor == min_ddev_minor && patch >= min_ddev_patch )); then
+                    has_valid_version=true
+                fi
+            fi
+        fi
+
+        if [[ "$has_valid_version" != "true" ]]; then
+            actions+=("install.yaml should contain \`ddev_version_constraint: '>= v${min_ddev_major}.${min_ddev_minor}.${min_ddev_patch}'\` or higher, see upstream file $UPSTREAM/$install_yaml")
         fi
 
         # Check for addon-template
         if grep -q "addon-template" "$install_yaml"; then
             actions+=("install.yaml should not contain 'addon-template', use your own name")
         fi
+
+        # Check for #ddev-nodisplay tag
+        if grep -q "#ddev-nodisplay" "$install_yaml"; then
+            actions+=("install.yaml should not contain '#ddev-nodisplay' tag, it's not used anymore, see upstream file $UPSTREAM/$install_yaml")
+        fi
     else
         actions+=("install.yaml is missing, see upstream file $UPSTREAM/$install_yaml")
     fi
 }
 
-# Check tests/test.bats for required conditions
+# Check tests/*.bats for required conditions
 check_test_bats() {
     local test_bats="tests/test.bats"
+    local bats_files
 
+    # Find any .bats files in tests directory
+    mapfile -t bats_files < <(find tests -maxdepth 1 -name "*.bats" -type f 2>/dev/null)
+
+    if [[ ${#bats_files[@]} -eq 0 ]]; then
+        actions+=("tests/ directory should contain at least one .bats test file, see upstream file $UPSTREAM/tests/test.bats")
+        return
+    fi
+
+    # If tests/test.bats exists, check it for required content
     if [[ -f "$test_bats" ]]; then
         # Check for test_tags=release
         if grep -q "install from release" "$test_bats" && ! grep -q "# bats test_tags=release" "$test_bats"; then
-            actions+=("$test_bats should contain '# bats test_tags=release', see upstream file $UPSTREAM/$test_bats")
+            actions+=("$test_bats should contain '# bats test_tags=release', see upstream file $UPSTREAM/tests/test.bats")
         fi
 
         # Check for ddev add-on get
         if ! grep -q "ddev add-on get" "$test_bats"; then
-            actions+=("$test_bats should contain 'ddev add-on get', see upstream file $UPSTREAM/$test_bats")
+            actions+=("$test_bats should contain 'ddev add-on get', see upstream file $UPSTREAM/tests/test.bats")
+        fi
+
+        # Check for GITHUB_ENV usage
+        if ! grep -q "GITHUB_ENV" "$test_bats"; then
+            actions+=("$test_bats should use GITHUB_ENV in teardown() function, see upstream file $UPSTREAM/tests/test.bats")
+        fi
+
+        # Check for DDEV_NONINTERACTIVE=true
+        if ! grep -q "DDEV_NONINTERACTIVE=true" "$test_bats"; then
+            actions+=("$test_bats should set DDEV_NONINTERACTIVE=true, see upstream file $UPSTREAM/tests/test.bats")
+        fi
+
+        # Check for DDEV_NO_INSTRUMENTATION=true
+        if ! grep -q "DDEV_NO_INSTRUMENTATION=true" "$test_bats"; then
+            actions+=("$test_bats should set DDEV_NO_INSTRUMENTATION=true, see upstream file $UPSTREAM/tests/test.bats")
+        fi
+
+        # Check for GITHUB_REPO
+        if ! grep -q "GITHUB_REPO" "$test_bats"; then
+            actions+=("$test_bats should define GITHUB_REPO, see upstream file $UPSTREAM/tests/test.bats")
+        fi
+
+        # Check for bats_load_library
+        if ! grep -q "bats_load_library" "$test_bats"; then
+            actions+=("$test_bats should use bats_load_library, see upstream file $UPSTREAM/tests/test.bats")
         fi
     else
-        actions+=("$test_bats is missing, see upstream file $UPSTREAM/$test_bats")
+        # Warn if using non-standard test files
+        info_messages+=("$test_bats not found, skipping detailed checks. Found test files: ${bats_files[*]}")
     fi
 }
 
@@ -110,9 +181,11 @@ check_tests_workflow() {
         if ! grep -q "ddev/github-action-add-on-test@v2" "$tests_yml"; then
             actions+=("$tests_yml should use 'ddev/github-action-add-on-test@v2', see upstream file $UPSTREAM/$tests_yml")
         fi
-        # Check for paths-ignore
-        if ! grep -q "paths-ignore" "$tests_yml"; then
-            actions+=("$tests_yml should have 'paths-ignore' for markdown, see upstream file $UPSTREAM/$tests_yml")
+        # Check for at least 2 instances of paths-ignore
+        local paths_ignore_count
+        paths_ignore_count=$(grep -o "paths-ignore:" "$tests_yml" 2>/dev/null | wc -l)
+        if (( paths_ignore_count < 2 )); then
+            actions+=("$tests_yml should contain at least 2 instances of 'paths-ignore:', found $paths_ignore_count, see upstream file $UPSTREAM/$tests_yml")
         fi
     else
         actions+=("$tests_yml is missing, see upstream file $UPSTREAM/$tests_yml")
@@ -151,8 +224,8 @@ check_github_templates() {
     # Check PULL_REQUEST_TEMPLATE.md for the forbidden exact link
     local pr_template=".github/PULL_REQUEST_TEMPLATE.md"
     if [[ -f "$pr_template" ]]; then
-        if grep -q "https://github.com/<user>/<repo>/tarball/<branch>" "$pr_template"; then
-            actions+=("PULL_REQUEST_TEMPLATE.md should not contain 'https://github.com/<user>/<repo>/tarball/<branch>', see upstream file $UPSTREAM/$pr_template?plain=1")
+        if ! grep -q "REPLACE_ME_WITH_THIS_PR_NUMBER" "$pr_template"; then
+            actions+=("PULL_REQUEST_TEMPLATE.md should contain 'ddev add-on get https://github.com/<your-name>/<your-repo>/tarball/refs/pull/REPLACE_ME_WITH_THIS_PR_NUMBER/head', see upstream file $UPSTREAM/$pr_template?plain=1")
         fi
     fi
 }
@@ -203,6 +276,28 @@ check_gitattributes() {
   fi
 }
 
+# Check for trailing newline and whitespace-only lines in all files
+check_file_formatting() {
+    local file
+    # Get all tracked files from git, excluding binary files and specific patterns
+    while IFS= read -r -d '' file; do
+        # Skip binary files and images
+        if file "$file" 2>/dev/null | grep -qE "image|binary|executable|archive"; then
+            continue
+        fi
+
+        # Check if file ends with a newline
+        if [[ -n "$(tail -c 1 "$file" 2>/dev/null)" ]]; then
+            actions+=("$file should have an empty line at the end")
+        fi
+
+        # Check for lines containing only whitespace
+        if grep -qn '^[[:space:]]\+$' "$file" 2>/dev/null; then
+            actions+=("$file contains lines with only spaces/tabs, remove trailing whitespace")
+        fi
+    done < <(git ls-files -z 2>/dev/null | grep -zv '^tests/testdata/' || find . -type f -not -path './.git/*' -not -path './tests/testdata/*' -print0 2>/dev/null)
+}
+
 # Main function
 main() {
     if [[ ! -f "install.yaml" ]]; then
@@ -246,9 +341,21 @@ main() {
 
     # Check LICENSE file
     check_license
-  
+
     # Check .gitattributes
     check_gitattributes
+
+    # Check file formatting
+    check_file_formatting
+
+    # Display info messages if any
+    if [[ ${#info_messages[@]} -gt 0 ]]; then
+        echo "INFO:" >&2
+        local info
+        for info in "${info_messages[@]}"; do
+            echo "- $info" >&2
+        done
+    fi
 
     # If any actions are needed, throw an error
     if [[ ${#actions[@]} -gt 0 ]]; then
