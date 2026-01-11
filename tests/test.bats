@@ -40,6 +40,13 @@ setup() {
 
 health_checks() {
   # Verify Claude CLI
+  echo "# Checking PATH in container..." >&3
+  run ddev exec echo '$PATH'
+  echo "# PATH: $output" >&3
+
+  run ddev exec which claude
+  echo "# which claude: $output" >&3
+
   run ddev exec claude --version
   assert_success
   
