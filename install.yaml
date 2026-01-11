@@ -1,7 +1,5 @@
 name: ddev-assistant-claude
-repository: e0ipso/ddev-assistant-claude
-version: 1.0.0
-install_date: null
+
 project_files:
   - install.sh
   - src/
@@ -10,9 +8,5 @@ project_files:
   - .ddev/config.ddev-assistant-claude.yaml
   - .ddev/docker-compose.ddev-assistant-claude.yaml
   - .ddev/hooks/post-install/01-setup-ddev-assistant-claude.sh
+
 global_files: []
-removal_actions:
-  - |
-    #ddev-nodisplay
-    #ddev-description: Clean up Claude addon files
-    echo "Claude addon removed. To reinstall: ddev add-ons install ddev-assistant-claude"
