@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "mcp_servers": [
+    {
+      "name": "puppeteer",
+      "enabled": true,
+      "command": "npx -y @modelcontextprotocol/server-puppeteer",
+      "environment": {
+        "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true",
+        "PUPPETEER_EXECUTABLE_PATH": "/usr/bin/chromium",
+        "PUPPETEER_LAUNCH_OPTIONS": "{\"headless\": true, \"args\": [\"--no-sandbox\", \"--disable-setuid-sandbox\"]}"
+      }
+    }
+  ],
+  "extends_from": ".ddev/mcp-config/claude.json"
+}

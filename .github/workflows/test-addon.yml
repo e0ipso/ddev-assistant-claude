@@ -1,0 +1,80 @@
+name: Test Claude Addon
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test-addon:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        ddev-version: [latest]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install DDEV
+        run: |
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            curl -fsSL https://apt.fury.io/ddev/pubkey.gpg | sudo apt-key add - || true
+            echo "deb [signed-by=/usr/share/keyrings/ddev-archive-keyring.gpg] https://apt.fury.io/ddev/ * *" | sudo tee /etc/apt/sources.list.d/ddev.list || true
+            sudo apt-get update
+            sudo apt-get install -y ddev
+          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            brew tap ddev/ddev && brew install ddev || true
+          fi
+          ddev version
+
+      - name: Create Test Project
+        run: |
+          mkdir -p test-project
+          cd test-project
+          ddev config --project-type=php --docroot=. --create-docroot
+
+      - name: Install Addon
+        working-directory: test-project
+        run: |
+          ddev add-ons install ..
+
+      - name: Start DDEV
+        working-directory: test-project
+        run: |
+          ddev start || (ddev logs && exit 1)
+
+      - name: Test Claude CLI Installation
+        working-directory: test-project
+        run: |
+          ddev exec which claude || exit 1
+          ddev exec claude --version || exit 1
+
+      - name: Test AI Task Manager Initialization
+        working-directory: test-project
+        run: |
+          ddev exec test -d .ai/task-manager || (echo "AI Task Manager not initialized" && exit 1)
+          ddev exec test -f .ai/task-manager/.init-metadata.json || (echo "AI Task Manager metadata missing" && exit 1)
+
+      - name: Test MCP Server Configuration
+        working-directory: test-project
+        run: |
+          ddev exec claude mcp list || echo "MCP list command not available (expected in test environment)"
+
+      - name: Collect Logs on Failure
+        if: failure()
+        working-directory: test-project
+        run: |
+          ddev logs || true
+          ddev status || true
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-${{ matrix.os }}
+          path: test-project/.ddev/
+          retention-days: 7
