@@ -11,7 +11,7 @@ if [ -f ".ai/task-manager/.init-metadata.json" ]; then
 fi
 
 # Initialize AI Task Manager via npx
-if npx @e0ipso/ai-task-manager init --assistant=claude; then
+if npx -y @e0ipso/ai-task-manager init --assistant=claude; then
     echo "✓ AI Task Manager initialized for Claude"
 else
     echo "⚠ Warning: AI Task Manager initialization had issues (may already be initialized)"

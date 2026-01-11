@@ -3,6 +3,9 @@ repository: e0ipso/ddev-assistant-claude
 version: 1.0.0
 install_date: null
 project_files:
+  - install.sh
+  - src/
+  - mcp/
   - .ddev/commands/web/claude-init
   - .ddev/config.ddev-assistant-claude.yaml
   - .ddev/docker-compose.ddev-assistant-claude.yaml

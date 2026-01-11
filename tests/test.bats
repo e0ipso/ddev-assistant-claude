@@ -16,7 +16,7 @@ setup() {
   set -eu -o pipefail
 
   # Override this variable for your add-on:
-  export GITHUB_REPO=ddev/ddev-addon-template
+  export GITHUB_REPO=e0ipso/ddev-assistant-claude
 
   TEST_BREW_PREFIX="$(brew --prefix 2>/dev/null || true)"
   export BATS_LIB_PATH="${BATS_LIB_PATH}:${TEST_BREW_PREFIX}/lib:/usr/lib/bats"
@@ -39,17 +39,19 @@ setup() {
 }
 
 health_checks() {
-  # Do something useful here that verifies the add-on
-
-  # You can check for specific information in headers:
-  # run curl -sfI https://${PROJNAME}.ddev.site
-  # assert_output --partial "HTTP/2 200"
-  # assert_output --partial "test_header"
-
-  # Or check if some command gives expected output:
-  DDEV_DEBUG=true run ddev launch
+  # Verify Claude CLI
+  run ddev exec claude --version
   assert_success
-  assert_output --partial "FULLURL https://${PROJNAME}.ddev.site"
+  
+  # Verify AI Task Manager initialization
+  run ddev exec ls -la .ai/task-manager/
+  assert_success
+  run ddev exec test -f .ai/task-manager/.init-metadata.json
+  assert_success
+
+  # Verify MCP servers
+  run ddev exec claude mcp list
+  assert_success
 }
 
 teardown() {

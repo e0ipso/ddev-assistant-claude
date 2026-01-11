@@ -6,6 +6,6 @@ set -e
 echo "Reinitializing AI Task Manager for Claude..."
 
 # Initialize AI Task Manager
-npx @e0ipso/ai-task-manager init --assistant=claude
+npx -y @e0ipso/ai-task-manager init --assistant=claude
 
 echo "✓ AI Task Manager reinitialized for Claude"

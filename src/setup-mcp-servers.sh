@@ -15,34 +15,65 @@ add_mcp_server() {
 
     echo "  Adding MCP server: $name"
 
+    local cmd_args=("mcp" "add" "$name")
+    
     # Parse environment variables from JSON and pass to claude mcp add
-    if [ -n "$env_json" ]; then
-        # Extract environment variables and apply them
-        eval "$(echo "$env_json" | jq -r 'to_entries | .[] | "export \(.key)=\(.value)"' 2>/dev/null || true)"
+    if [ -n "$env_json" ] && [ "$env_json" != "null" ]; then
+        # Extract environment variables for both eval and --env flags
+        local exports=$(echo "$env_json" | jq -r 'select(type == "object") | to_entries | .[] | "export \(.key)=\(.value | @sh)"' 2>/dev/null || true)
+        if [ -n "$exports" ]; then
+            eval "$exports"
+        fi
+        
+        # Prepare --env flags safely using an array
+        while IFS= read -r line; do
+            [ -n "$line" ] && cmd_args+=("--env" "$line")
+        done < <(echo "$env_json" | jq -r 'select(type == "object") | to_entries | .[] | "\(.key)=\(.value)"' 2>/dev/null || true)
     fi
 
-    if claude mcp add "$name" "$command" 2>/dev/null || true; then
+    # Add the separator and the command (split into arguments)
+    cmd_args+=("--")
+    
+    # Split command into arguments safely
+    read -ra command_parts <<< "$command"
+    cmd_args+=("${command_parts[@]}")
+
+    echo "  Adding MCP server: $name"
+    if claude "${cmd_args[@]}" 2>/dev/null || true; then
         echo "    ✓ $name configured"
     fi
 }
 
-# Read addon config and configure MCP servers
-if [ -f "$ADDON_CONFIG" ]; then
-    echo "Applying addon MCP configuration..."
+# Function to process config file
+process_config() {
+    local config_file="$1"
+    if [ ! -f "$config_file" ]; then
+        return
+    fi
 
-    # Use jq to iterate through MCP servers in the config
-    jq -r '.mcp_servers[] | select(.enabled == true) | "\(.name):\(.command):\(.environment | tojson)"' "$ADDON_CONFIG" 2>/dev/null | while IFS=: read -r name command env_json; do
+    echo "Applying configuration from $config_file..."
+    
+    # Get the number of servers
+    local count=$(jq '.mcp_servers | length' "$config_file" 2>/dev/null || echo 0)
+    
+    for ((i=0; i<count; i++)); do
+        local enabled=$(jq -r ".mcp_servers[$i].enabled" "$config_file")
+        if [ "$enabled" != "true" ]; then
+            continue
+        fi
+        
+        local name=$(jq -r ".mcp_servers[$i].name" "$config_file")
+        local command=$(jq -r ".mcp_servers[$i].command" "$config_file")
+        local env_json=$(jq -c ".mcp_servers[$i].environment" "$config_file")
+        
         add_mcp_server "$name" "$command" "$env_json"
-    done || true
-fi
+    done
+}
+
+# Read addon config
+process_config "$ADDON_CONFIG"
 
 # Allow project-level configuration to extend/override
-if [ -f "$PROJECT_CONFIG" ]; then
-    echo "Applying project-level MCP configuration..."
-
-    jq -r '.mcp_servers[] | select(.enabled == true) | "\(.name):\(.command):\(.environment | tojson)"' "$PROJECT_CONFIG" 2>/dev/null | while IFS=: read -r name command env_json; do
-        add_mcp_server "$name" "$command" "$env_json"
-    done || true
-fi
+process_config "$PROJECT_CONFIG"
 
 echo "✓ MCP servers configured"
