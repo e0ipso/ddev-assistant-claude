@@ -8,6 +8,6 @@ web_environment:
 
 hooks:
   post-start:
-    - exec: /bin/bash -c 'npm config set prefix /usr/local 2>/dev/null; npm install -g @anthropic-ai/claude-code 2>/dev/null; true'
+    - exec: /bin/bash -c 'curl -fsSL https://claude.ai/install.sh | bash || true'
 
 override_config: false
