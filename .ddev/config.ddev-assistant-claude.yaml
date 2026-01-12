@@ -8,6 +8,6 @@ web_environment:
 
 hooks:
   post-start:
-    - exec: bash install.sh
+    - exec: bash /mnt/ddev-addon-ddev-assistant-claude/install.sh
 
 override_config: false
