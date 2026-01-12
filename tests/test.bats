@@ -39,6 +39,13 @@ setup() {
 }
 
 health_checks() {
+  # Check installation log first
+  echo "# Checking installation log..." >&3
+  run ddev exec cat /tmp/claude-install.log
+  echo "# Installation log output:" >&3
+  echo "$output" >&3
+  echo "# End of installation log" >&3
+
   # Verify Claude CLI
   echo "# Checking PATH in container..." >&3
   run ddev exec echo '$PATH'
