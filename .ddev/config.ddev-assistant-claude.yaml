@@ -8,6 +8,7 @@ web_environment:
 
 hooks:
   post-start:
-    - exec: npm config set prefix /usr/local && npm install -g @anthropic-ai/claude-code 2>&1 || echo "Note: Claude Code npm install may have completed with npm warnings"
+    - exec: npm config set prefix /usr/local
+    - exec: npm install -g @anthropic-ai/claude-code || true
 
 override_config: false
