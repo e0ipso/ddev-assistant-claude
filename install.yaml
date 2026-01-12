@@ -7,6 +7,5 @@ project_files:
   - .ddev/commands/web/claude-init
   - .ddev/config.ddev-assistant-claude.yaml
   - .ddev/docker-compose.ddev-assistant-claude.yaml
-  - .ddev/hooks/post-install/01-setup-ddev-assistant-claude.sh
 
 global_files: []

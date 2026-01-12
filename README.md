@@ -10,10 +10,9 @@ ddev add-ons install ddev-assistant-claude
 
 ## What This Addon Does
 
-- Installs Claude Code CLI (`@anthropic-ai/claude-code`)
+- Installs Claude Code CLI using the official installer
 - Initializes AI Task Manager for Claude
 - Configures MCP servers (Puppeteer by default)
-- Fixes configuration directory ownership
 
 ## Quick Start
 
