@@ -1,6 +1,12 @@
 #!/bin/bash
 set -ex
 
+# Log all output to a file for debugging
+LOG_FILE="/tmp/claude-install.log"
+exec > >(tee -a "$LOG_FILE")
+exec 2>&1
+echo "=== Claude CLI Installation started at $(date) ==="
+
 # Check if Claude Code is already installed
 if command -v claude &> /dev/null; then
     echo "Claude Code is already installed: $(claude --version)"
@@ -33,21 +39,34 @@ fi
 # Verify installation
 if command -v claude &> /dev/null; then
     echo "✓ Claude Code installed successfully: $(claude --version)"
+    echo "Installation log saved to: $LOG_FILE"
     exit 0
 else
     echo "✗ Failed to install Claude Code CLI"
     echo "Debugging information:"
     echo "PATH: $PATH"
-    echo "Looking for claude in common locations..."
-    for dir in /usr/local/bin /usr/bin /bin ~/.local/bin ~/.npm-global/bin; do
-        if [ -x "$dir/claude" ]; then
-            echo "  Found: $dir/claude"
-            export PATH="$PATH:$dir"
-            if command -v claude &> /dev/null; then
-                echo "✓ Claude found at $dir after PATH update"
-                exit 0
-            fi
+    echo ""
+    echo "=== Searching for claude binary in common locations ==="
+    for dir in /usr/local/bin /usr/bin /bin ~/.local/bin ~/.npm-global/bin /opt/claude/bin; do
+        echo "Checking $dir:"
+        if [ -d "$dir" ]; then
+            ls -la "$dir" | grep -i claude || echo "  (no claude found)"
+        else
+            echo "  (directory doesn't exist)"
         fi
     done
+
+    echo ""
+    echo "=== Installation log output ==="
+    if [ -f "$LOG_FILE" ]; then
+        cat "$LOG_FILE"
+    else
+        echo "Log file not found at $LOG_FILE"
+    fi
+
+    echo ""
+    echo "=== npm config ==="
+    npm config list || echo "Failed to get npm config"
+
     exit 1
 fi
