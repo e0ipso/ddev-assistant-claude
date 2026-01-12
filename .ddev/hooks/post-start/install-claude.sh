@@ -1,15 +1,21 @@
 #!/bin/bash
-# Install Claude Code CLI
-
 set -e
 
-echo "Installing Claude Code..."
+echo "Installing Claude Code addon..."
 
-npm config set prefix /usr/local
-npm install -g @anthropic-ai/claude-code || true
+# Get the addon directory (parent of .ddev)
+ADDON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-if command -v claude &> /dev/null; then
-    echo "✓ Claude Code installed: $(claude --version)"
-else
-    echo "⚠ Claude installation had issues, but continuing..."
-fi
+# Install CLI tool
+echo "Step 1: Installing Claude Code CLI..."
+bash "$ADDON_DIR/src/install-cli.sh"
+
+# Initialize AI Task Manager
+echo "Step 2: Initializing AI Task Manager..."
+bash "$ADDON_DIR/src/setup-ai-task-manager.sh"
+
+# Configure MCP servers
+echo "Step 3: Configuring MCP servers..."
+bash "$ADDON_DIR/src/setup-mcp-servers.sh"
+
+echo "✓ ddev-assistant-claude addon installation complete!"
