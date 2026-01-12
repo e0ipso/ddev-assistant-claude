@@ -13,27 +13,45 @@ if command -v claude &> /dev/null; then
     exit 0
 fi
 
-# Install Claude Code CLI using official installer
+# Install Claude Code CLI using official installer with fallback to npm
 echo "Installing Claude Code..."
 
-# Download the installer and capture both stdout and stderr
+# Try official installer first
 INSTALLER_OUTPUT=$(mktemp)
 INSTALLER_ERRORS=$(mktemp)
+INSTALL_SUCCESS=false
 
-if curl -fSL https://claude.ai/install.sh -o "$INSTALLER_OUTPUT" 2>"$INSTALLER_ERRORS"; then
-    echo "Installer downloaded successfully"
+echo "Attempting to download official installer from https://claude.ai/install.sh..."
+if curl -v -fSL https://claude.ai/install.sh -o "$INSTALLER_OUTPUT" 2>"$INSTALLER_ERRORS"; then
+    echo "Installer downloaded successfully ($(wc -c < "$INSTALLER_OUTPUT") bytes)"
     # Execute the installer with output
     if bash "$INSTALLER_OUTPUT" 2>&1; then
-        echo "Installer executed successfully"
+        echo "Official installer executed successfully"
+        INSTALL_SUCCESS=true
     else
-        echo "⚠ Installer execution had errors (continuing with diagnostics)"
-        cat "$INSTALLER_OUTPUT" | head -20
+        echo "⚠ Official installer execution had errors"
+        echo "First 30 lines of installer:"
+        head -30 "$INSTALLER_OUTPUT"
     fi
-    rm "$INSTALLER_OUTPUT"
 else
-    echo "⚠ Failed to download installer from https://claude.ai/install.sh"
-    cat "$INSTALLER_ERRORS"
-    rm "$INSTALLER_OUTPUT" "$INSTALLER_ERRORS"
+    echo "⚠ Failed to download official installer"
+    echo "Error output:"
+    head -20 "$INSTALLER_ERRORS"
+fi
+
+rm -f "$INSTALLER_OUTPUT" "$INSTALLER_ERRORS"
+
+# Fallback: try npm if official installer didn't work
+if [ "$INSTALL_SUCCESS" = false ] && command -v npm &> /dev/null; then
+    echo ""
+    echo "Falling back to npm installation..."
+    npm config set prefix /usr/local
+    if npm install -g @anthropic-ai/claude-code; then
+        echo "npm installation successful"
+        INSTALL_SUCCESS=true
+    else
+        echo "npm installation also failed"
+    fi
 fi
 
 # Verify installation
