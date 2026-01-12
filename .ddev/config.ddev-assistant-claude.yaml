@@ -7,6 +7,7 @@ web_environment:
   - AI_TASK_MANAGER_ASSISTANT=claude
 
 hooks:
-  post-start: []
+  post-start:
+    - exec: /bin/bash -c 'npm config set prefix /usr/local 2>/dev/null; npm install -g @anthropic-ai/claude-code 2>/dev/null; true'
 
 override_config: false
