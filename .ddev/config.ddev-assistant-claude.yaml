@@ -6,4 +6,8 @@ web_environment:
   - CLAUDE_CONFIG_DIR=$HOME/.claude
   - AI_TASK_MANAGER_ASSISTANT=claude
 
+hooks:
+  post-start:
+    - exec: "bash /var/www/html/.ddev/hooks/post-start/install-claude.sh > /tmp/claude-install.log 2>&1"
+
 override_config: false
