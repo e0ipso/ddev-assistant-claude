@@ -4,7 +4,7 @@ set -e
 echo "Installing Claude Code addon..."
 
 # Get the addon directory (parent of .ddev)
-ADDON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ADDON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 # Install CLI tool
 echo "Step 1: Installing Claude Code CLI..."
