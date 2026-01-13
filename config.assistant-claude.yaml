@@ -1,0 +1,4 @@
+#ddev-generated
+hooks:
+  post-start:
+    - exec: "if [ ! -f .ai/task-manager/.init-metadata.json ]; then echo 'Initializing AI Task Manager...' && npx @e0ipso/ai-task-manager init --assistants claude; fi"

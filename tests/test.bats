@@ -50,6 +50,15 @@ health_checks() {
   DDEV_DEBUG=true run ddev launch
   assert_success
   assert_output --partial "FULLURL https://${PROJNAME}.ddev.site"
+
+  # Verify Claude is installed
+  run ddev exec "claude --version"
+  assert_success
+
+  # Verify the AI Task Manager initialization file exists
+  # This should have been created automatically by the post-start hook
+  run ddev exec "ls .ai/task-manager/.init-metadata.json"
+  assert_success
 }
 
 teardown() {
