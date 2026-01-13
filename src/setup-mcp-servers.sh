@@ -5,6 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADDON_CONFIG="$SCRIPT_DIR/../mcp/config.json"
 PROJECT_CONFIG=".ddev/mcp-config/claude.json"
 
+# Ensure claude is in PATH
+export PATH="$HOME/.claude/bin:$HOME/.local/bin:$PATH"
+
 echo "Configuring MCP servers for Claude..."
 
 # Function to add an MCP server
