@@ -8,14 +8,10 @@ RUN curl -fsSL https://claude.ai/install.sh | bash && \
     # Locate the installed binary. It usually goes to ~/.claude/bin or ~/.npm-global/bin depending on how it works.
     # The script description says it downloads a binary and runs 'install'.
     # We will look for 'claude' in /root and move it.
-    if [ -f "/root/.local/bin/claude" ]; then \
-        mv "/root/.local/bin/claude" /usr/local/bin/claude; \
+    found_bin=$(find /root -name claude -type f | head -n 1) && \
+    if [ -n "$found_bin" ]; then \
+        mv "$found_bin" /usr/local/bin/claude && \
+        chmod +x /usr/local/bin/claude; \
     else \
-        found_bin=$(find /root -name claude -type f | head -n 1) && \
-        if [ -n "$found_bin" ]; then \
-            mv "$found_bin" /usr/local/bin/claude; \
-        else \
-            echo "Claude binary not found after installation script ran." && exit 1; \
-        fi; \
-    fi && \
-    chmod +x /usr/local/bin/claude
+        echo "Claude binary not found after installation script ran." && exit 1; \
+    fi
