@@ -1,10 +1,23 @@
 ARG BASE_IMAGE
 FROM $BASE_IMAGE
 
-# Install Claude Code globally.
-# The install script places the binary (or a symlink to it) at ~/.local/bin/claude.
+# Pre-install Claude Code to /usr/local/lib/claude/claude.
+# This path is outside the web user's home, which DDEV mounts as a Docker named volume
+# at runtime — files placed under the home directory in the image layer would be masked.
+# A post-start hook (config.assistant-claude.yaml) copies the binary into
+# ~/.local/bin/claude on first start so it is user-owned and on the volume.
 # Using cp -L dereferences any symlinks before copying, which prevents a broken
 # symlink at the destination when the installer uses relative symlinks internally.
 RUN curl -fsSL https://claude.ai/install.sh | bash && \
-    cp -L /root/.local/bin/claude /usr/local/bin/claude && \
-    chmod 755 /usr/local/bin/claude
+    mkdir -p /usr/local/lib/claude && \
+    cp -L /root/.local/bin/claude /usr/local/lib/claude/claude && \
+    chmod 755 /usr/local/lib/claude/claude
+
+# Ensure ~/.local/bin is in PATH for every shell session.
+# BASH_ENV is sourced by bash for non-interactive shells, which is how `ddev exec` runs
+# commands (e.g. `bash -c "claude --version"`).  Using $HOME means this works regardless
+# of which user DDEV maps into the container at runtime.
+# /etc/profile.d covers login/interactive shells.
+RUN printf 'export PATH="$HOME/.local/bin:$PATH"\n' > /etc/bash.env && \
+    cp /etc/bash.env /etc/profile.d/user-local-bin.sh
+ENV BASH_ENV=/etc/bash.env

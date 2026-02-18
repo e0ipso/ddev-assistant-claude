@@ -10,8 +10,8 @@
 ## Architecture
 
 - `install.yaml` — DDEV add-on manifest; declares project files and version constraints
-- `config.assistant-claude.yaml` — DDEV post-start hook that runs `npx @e0ipso/ai-task-manager init --assistants claude` on first start (creates `.ai/task-manager/.init-metadata.json` marker)
-- `web-build/Dockerfile.assistant-claude` — Installs Claude Code binary into the DDEV container via `https://claude.ai/install.sh`, places it at `/usr/local/bin/claude`
+- `config.assistant-claude.yaml` — DDEV post-start hooks: (1) copies the pre-installed Claude binary from `/usr/local/lib/claude/claude` to `~/.local/bin/claude` on first start (so it is user-owned and survives on the DDEV home volume); (2) runs `npx @e0ipso/ai-task-manager init --assistants claude` on first start (creates `.ai/task-manager/.init-metadata.json` marker)
+- `web-build/Dockerfile.assistant-claude` — Downloads Claude Code via `https://claude.ai/install.sh` and pre-installs it at `/usr/local/lib/claude/claude` (outside the DDEV-mounted user home); sets `BASH_ENV=/etc/bash.env` so that `$HOME/.local/bin` is prepended to `$PATH` for every bash session (both non-interactive `ddev exec` calls and login shells via `/etc/profile.d/`)
 - `.devcontainer/` — Local development container (Node.js 22, bats, shellcheck, Claude Code)
 - `tests/test.bats` — BATS integration tests
 - `.github/workflows/tests.yml` — CI using `ddev/github-action-add-on-test@v2`, matrix: DDEV `stable` + `HEAD`
@@ -33,8 +33,9 @@ bats ./tests/test.bats --show-output-of-passing-tests --verbose-run --print-outp
 
 Tests spin up a temporary DDEV project (`test-ddev-assistant-claude`), install the add-on, and verify:
 1. `ddev launch` works
-2. `claude --version` is available inside the container
-3. AI Task Manager initialization marker file exists
+2. `~/.local/bin/claude` exists inside the container and is not owned by `root`
+3. `claude --version` is accessible via `$PATH` (which includes `~/.local/bin`)
+4. AI Task Manager initialization marker file exists
 
 The `install from release` test (tagged `@release`) installs from GitHub releases; skip it locally with `--filter-tags '!release'`.
 
