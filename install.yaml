@@ -5,6 +5,6 @@ project_files:
   - config.assistant-claude.yaml
 
 post_install_actions:
-  - echo "Please run 'ddev restart' to build the new configuration and initialize the AI Task Manager."
+  - echo "Please run 'ddev restart' to build the new configuration and initialize the Assistant Claude."
 
 ddev_version_constraint: '>= v1.24.0'
