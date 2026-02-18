@@ -13,11 +13,12 @@ RUN curl -fsSL https://claude.ai/install.sh | bash && \
     cp -L /root/.local/bin/claude /usr/local/lib/claude/claude && \
     chmod 755 /usr/local/lib/claude/claude
 
-# Ensure ~/.local/bin is in PATH for every shell session.
-# BASH_ENV is sourced by bash for non-interactive shells, which is how `ddev exec` runs
-# commands (e.g. `bash -c "claude --version"`).  Using $HOME means this works regardless
-# of which user DDEV maps into the container at runtime.
-# /etc/profile.d covers login/interactive shells.
-RUN printf 'export PATH="$HOME/.local/bin:$PATH"\n' > /etc/bash.env && \
-    cp /etc/bash.env /etc/profile.d/user-local-bin.sh
+# Ensure ~/.local/bin is in PATH for non-interactive shells (ddev exec).
+# BASH_ENV is sourced by bash for non-interactive shells, which is how `ddev exec`
+# runs commands (e.g. `bash -c "claude --version"`).  Using $HOME means this works
+# regardless of which user DDEV maps into the container at runtime.
+# Interactive shells (ddev ssh) are covered by a ~/.bashrc.d script created in the
+# post-start hook (config.assistant-claude.yaml), since the home directory is a
+# volume and cannot be populated at build time.
+RUN printf 'export PATH="$HOME/.local/bin:$PATH"\n' > /etc/bash.env
 ENV BASH_ENV=/etc/bash.env

@@ -10,8 +10,8 @@
 ## Architecture
 
 - `install.yaml` — DDEV add-on manifest; declares project files and version constraints
-- `config.assistant-claude.yaml` — DDEV post-start hooks: (1) copies the pre-installed Claude binary from `/usr/local/lib/claude/claude` to `~/.local/bin/claude` on first start (so it is user-owned and survives on the DDEV home volume); (2) runs `npx @e0ipso/ai-task-manager init --assistants claude` on first start (creates `.ai/task-manager/.init-metadata.json` marker)
-- `web-build/Dockerfile.assistant-claude` — Downloads Claude Code via `https://claude.ai/install.sh` and pre-installs it at `/usr/local/lib/claude/claude` (outside the DDEV-mounted user home); sets `BASH_ENV=/etc/bash.env` so that `$HOME/.local/bin` is prepended to `$PATH` for every bash session (both non-interactive `ddev exec` calls and login shells via `/etc/profile.d/`)
+- `config.assistant-claude.yaml` — DDEV post-start hooks: (1) copies the pre-installed Claude binary from `/usr/local/lib/claude/claude` to `~/.local/bin/claude` on first start (so it is user-owned and survives on the DDEV home volume); (2) creates a `~/.bashrc.d/user-local-bin.sh` script so `~/.local/bin` is in PATH for interactive shells (`ddev ssh`); (3) runs `npx @e0ipso/ai-task-manager init --assistants claude` on first start (creates `.ai/task-manager/.init-metadata.json` marker)
+- `web-build/Dockerfile.assistant-claude` — Downloads Claude Code via `https://claude.ai/install.sh` and pre-installs it at `/usr/local/lib/claude/claude` (outside the DDEV-mounted user home); sets `BASH_ENV=/etc/bash.env` so that `$HOME/.local/bin` is prepended to `$PATH` for non-interactive shells (`ddev exec`)
 - `.devcontainer/` — Local development container (Node.js 22, bats, shellcheck, Claude Code)
 - `tests/test.bats` — BATS integration tests
 - `.github/workflows/tests.yml` — CI using `ddev/github-action-add-on-test@v2`, matrix: DDEV `stable` + `HEAD`
