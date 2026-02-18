@@ -10,7 +10,8 @@
 ## Architecture
 
 - `install.yaml` — DDEV add-on manifest; declares project files and version constraints
-- `config.assistant-claude.yaml` — DDEV post-start hooks: (1) copies the pre-installed Claude binary from `/usr/local/lib/claude/claude` to `~/.local/bin/claude` on first start (so it is user-owned and survives on the DDEV home volume); (2) creates a `~/.bashrc.d/user-local-bin.sh` script so `~/.local/bin` is in PATH for interactive shells (`ddev ssh`); (3) runs `npx @e0ipso/ai-task-manager init --assistants claude` on first start (creates `.ai/task-manager/.init-metadata.json` marker)
+- `config.assistant-claude.yaml` — DDEV hooks: **pre-start** (`exec-host`) creates stub host paths for Claude config files so Docker bind-mounts them as files (not directories); **post-start** (`exec`) copies the binary to `~/.local/bin/claude`, writes `~/.bashrc.d/user-local-bin.sh` for interactive PATH, and runs `npx @e0ipso/ai-task-manager init` on first start
+- `docker-compose.assistant-claude.yaml` — Bind-mounts the host user's `~/.claude/` config files (CLAUDE.md, settings.json, skills, hooks, commands) read-only into the same path inside the web container so the in-container `claude` shares the host configuration
 - `web-build/Dockerfile.assistant-claude` — Downloads Claude Code via `https://claude.ai/install.sh` and pre-installs it at `/usr/local/lib/claude/claude` (outside the DDEV-mounted user home); sets `BASH_ENV=/etc/bash.env` so that `$HOME/.local/bin` is prepended to `$PATH` for non-interactive shells (`ddev exec`)
 - `.devcontainer/` — Local development container (Node.js 22, bats, shellcheck, Claude Code)
 - `tests/test.bats` — BATS integration tests
@@ -35,7 +36,8 @@ Tests spin up a temporary DDEV project (`test-ddev-assistant-claude`), install t
 1. `ddev launch` works
 2. `~/.local/bin/claude` exists inside the container and is not owned by `root`
 3. `claude --version` is accessible via `$PATH` (which includes `~/.local/bin`)
-4. AI Task Manager initialization marker file exists
+4. `~/.claude/CLAUDE.md` is accessible in the container (mount working)
+5. AI Task Manager initialization marker file exists
 
 The `install from release` test (tagged `@release`) installs from GitHub releases; skip it locally with `--filter-tags '!release'`.
 

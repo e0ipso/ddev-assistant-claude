@@ -3,6 +3,7 @@ name: assistant-claude
 project_files:
   - web-build/Dockerfile.assistant-claude
   - config.assistant-claude.yaml
+  - docker-compose.assistant-claude.yaml
 
 post_install_actions:
   - echo "Please run 'ddev restart' to build the new configuration and initialize the AI Task Manager."

@@ -1,5 +1,10 @@
 #ddev-generated
 hooks:
+  pre-start:
+    # Ensure host-side Claude Code paths exist so Docker bind-mounts them as the
+    # correct type (file vs directory).  If a file does not exist, Docker would
+    # create a directory at that path instead, breaking the mount.
+    - exec-host: "mkdir -p ~/.claude/skills ~/.claude/hooks && touch ~/.claude/CLAUDE.md ~/.claude/settings.json"
   post-start:
     - exec: "mkdir -p ~/.local/bin && [ -f ~/.local/bin/claude ] || cp /usr/local/lib/claude/claude ~/.local/bin/claude"
     - exec: "mkdir -p ~/.bashrc.d && printf 'export PATH=\"$HOME/.local/bin:$PATH\"\\n' > ~/.bashrc.d/user-local-bin.sh"

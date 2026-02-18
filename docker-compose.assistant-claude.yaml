@@ -1,0 +1,16 @@
+#ddev-generated
+# Mount Claude Code host configuration into the web container so that `claude`
+# inside the container shares the same global config, settings, skills, and hooks
+# as the host user's Claude Code installation.
+# The pre-start hook in config.assistant-claude.yaml ensures all host paths exist
+# as the correct type (file vs. directory) before Docker attempts to bind-mount them.
+# Without that hook, Docker would create a directory at any missing file path,
+# silently breaking the mount instead of raising an error.
+services:
+  web:
+    volumes:
+      - "${HOME}/.claude/CLAUDE.md:${HOME}/.claude/CLAUDE.md:ro"
+      - "${HOME}/.claude/settings.json:${HOME}/.claude/settings.json:ro"
+      - "${HOME}/.claude/skills:${HOME}/.claude/skills:ro"
+      - "${HOME}/.claude/hooks:${HOME}/.claude/hooks:ro"
+      - "${HOME}/.claude/hooks:${HOME}/.claude/commands:ro"

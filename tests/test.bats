@@ -62,6 +62,12 @@ health_checks() {
   run ddev exec "claude --version"
   assert_success
 
+  # Verify Claude Code host config is mounted as a regular file (the pre-start hook
+  # ensures the host path exists as a file; without it Docker would bind-mount a
+  # directory there instead)
+  run ddev exec "test -f ~/.claude/CLAUDE.md"
+  assert_success
+
   # Verify the AI Task Manager initialization file exists
   # This should have been created automatically by the post-start hook
   run ddev exec "ls .ai/task-manager/.init-metadata.json"
