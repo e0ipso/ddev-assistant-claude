@@ -18,13 +18,12 @@ setup() {
   # Override this variable for your add-on:
   export GITHUB_REPO=e0ipso/ddev-assistant-claude
 
+  export DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")/.." >/dev/null 2>&1 && pwd)"
   TEST_BREW_PREFIX="$(brew --prefix 2>/dev/null || true)"
-  export BATS_LIB_PATH="${BATS_LIB_PATH}:${TEST_BREW_PREFIX}/lib:/usr/lib/bats"
+  export BATS_LIB_PATH="${BATS_LIB_PATH:-}:${TEST_BREW_PREFIX}/lib:/usr/lib/bats:${DIR}/test_env/bats_libs"
   bats_load_library bats-assert
   bats_load_library bats-file
   bats_load_library bats-support
-
-  export DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")/.." >/dev/null 2>&1 && pwd)"
   export PROJNAME="test-$(basename "${GITHUB_REPO}")"
   mkdir -p "${HOME}/tmp"
   export TESTDIR="$(mktemp -d "${HOME}/tmp/${PROJNAME}.XXXXXX")"

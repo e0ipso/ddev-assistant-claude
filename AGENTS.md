@@ -40,6 +40,7 @@ The `install from release` test (tagged `@release`) installs from GitHub release
 
 ## Development Notes
 
+- **BATS tests must be run on the host machine**, not inside the devcontainer — they require DDEV, which manages Docker containers and cannot run inside a container itself
 - This is primarily a shell/Docker project — no application-level package manager for the main code
 - The `test_env/` directory contains npm-managed bats dependencies (gitignored)
 - Commits use conventional commit format (e.g., `feat:`, `fix:`)
