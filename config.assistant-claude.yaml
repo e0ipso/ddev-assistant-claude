@@ -7,5 +7,5 @@ hooks:
     - exec-host: "mkdir -p ~/.claude/skills ~/.claude/hooks && touch ~/.claude/CLAUDE.md ~/.claude/settings.json"
   post-start:
     - exec: "mkdir -p ~/.local/bin && [ -f ~/.local/bin/claude ] || cp /usr/local/lib/claude/claude ~/.local/bin/claude"
-    - exec: "mkdir -p ~/.bashrc.d && printf 'export PATH=\"$HOME/.local/bin:$PATH\"\\n' > ~/.bashrc.d/user-local-bin.sh"
+    - exec: "grep -qF '.local/bin' ~/.bashrc 2>/dev/null || printf '\\nexport PATH=\"$HOME/.local/bin:$PATH\"\\n' >> ~/.bashrc"
     - exec: "if [ ! -f .ai/task-manager/.init-metadata.json ]; then echo 'Initializing AI Task Manager...' && npx @e0ipso/ai-task-manager init --assistants claude; fi"
