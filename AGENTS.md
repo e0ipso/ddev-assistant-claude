@@ -46,3 +46,4 @@ The `install from release` test (tagged `@release`) installs from GitHub release
 - Commits use conventional commit format (e.g., `feat:`, `fix:`)
 - CI runs on PRs, pushes to main, and daily at 08:25 UTC
 - `.gitattributes` excludes tests, `.github/`, and docs from release archives
+
