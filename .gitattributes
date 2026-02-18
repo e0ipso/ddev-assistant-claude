@@ -2,3 +2,5 @@
 tests/ export-ignore
 .github/ export-ignore
 .gitattributes export-ignore
+package.json export-ignore
+package-lock.json export-ignore
