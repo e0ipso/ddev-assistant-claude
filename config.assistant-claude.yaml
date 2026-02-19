@@ -8,4 +8,3 @@ hooks:
   post-start:
     - exec: "mkdir -p ~/.local/bin && [ -f ~/.local/bin/claude ] || cp /usr/local/lib/claude/claude ~/.local/bin/claude"
     - exec: "grep -qF '.local/bin' ~/.bashrc 2>/dev/null || printf '\\nexport PATH=\"$HOME/.local/bin:$PATH\"\\n' >> ~/.bashrc"
-    - exec: "if [ ! -f .ai/task-manager/.init-metadata.json ]; then echo 'Initializing AI Task Manager...' && npx @e0ipso/ai-task-manager init --assistants claude; fi"

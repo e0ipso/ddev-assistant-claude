@@ -68,10 +68,6 @@ health_checks() {
   run ddev exec "test -f ~/.claude/CLAUDE.md"
   assert_success
 
-  # Verify the AI Task Manager initialization file exists
-  # This should have been created automatically by the post-start hook
-  run ddev exec "ls .ai/task-manager/.init-metadata.json"
-  assert_success
 }
 
 teardown() {

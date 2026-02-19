@@ -3,11 +3,18 @@
 [![last commit](https://img.shields.io/github/last-commit/e0ipso/ddev-assistant-claude)](https://github.com/e0ipso/ddev-assistant-claude/commits)
 [![release](https://img.shields.io/github/v/release/e0ipso/ddev-assistant-claude)](https://github.com/e0ipso/ddev-assistant-claude/releases/latest)
 
-# DDEV Assistant Claude
+# DDEV Claude Code
 
 ## Overview
 
-This add-on integrates Assistant Claude into your [DDEV](https://ddev.com/) project.
+This DDEV add-on installs [Claude Code](https://claude.ai/code) inside the DDEV web container and automatically shares your host Claude configuration — including `CLAUDE.md`, `settings.json`, skills, hooks, and commands — with no additional setup required.
+
+Once installed, running `claude` inside `ddev ssh` or `ddev exec` uses the same global configuration as your host machine.
+
+## Requirements
+
+- DDEV >= v1.24.0
+- A Claude Code installation on the host (for configuration sharing)
 
 ## Installation
 
@@ -16,32 +23,29 @@ ddev add-on get e0ipso/ddev-assistant-claude
 ddev restart
 ```
 
-After installation, make sure to commit the `.ddev` directory to version control.
+After installation, commit the `.ddev` directory to version control.
+
+## What it does
+
+- **Installs Claude Code** into the container at `~/.local/bin/claude`, owned by the web user (not root)
+- **Mounts host config files** read-only into the container:
+  - `~/.claude/CLAUDE.md` — project and global instructions
+  - `~/.claude/settings.json` — Claude Code settings
+  - `~/.claude/skills/` — custom skills
+  - `~/.claude/hooks/` — event hooks
+  - `~/.claude/commands/` — custom slash commands
+- **Configures `$PATH`** so `claude` is accessible in both interactive shells (`ddev ssh`) and non-interactive commands (`ddev exec`)
 
 ## Usage
 
-| Command | Description |
-| ------- | ----------- |
-| `ddev describe` | View service status and used ports for Assistant Claude |
-| `ddev logs -s assistant-claude` | Check Assistant Claude logs |
-
-## Advanced Customization
-
-To change the Docker image:
-
 ```bash
-ddev dotenv set .ddev/.env.assistant-claude --assistant-claude-docker-image="ddev/ddev-utilities:latest"
-ddev add-on get e0ipso/ddev-assistant-claude
-ddev restart
+# Open a shell with Claude Code available
+ddev ssh
+claude
+
+# Run Claude Code non-interactively
+ddev exec claude --version
 ```
-
-Make sure to commit the `.ddev/.env.assistant-claude` file to version control.
-
-All customization options (use with caution):
-
-| Variable | Flag | Default |
-| -------- | ---- | ------- |
-| `ASSISTANT_CLAUDE_DOCKER_IMAGE` | `--assistant-claude-docker-image` | `ddev/ddev-utilities:latest` |
 
 ## Credits
 
