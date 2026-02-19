@@ -62,6 +62,11 @@ health_checks() {
   run ddev exec "claude --version"
   assert_success
 
+  # Verify ~/.claude is owned by the web user (not root)
+  run ddev exec "stat -c '%U' ~/.claude"
+  assert_success
+  refute_output "root"
+
   # Verify Claude Code host config is mounted as a regular file (the pre-start hook
   # ensures the host path exists as a file; without it Docker would bind-mount a
   # directory there instead)
