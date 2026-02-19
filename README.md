@@ -47,6 +47,21 @@ claude
 ddev exec claude --version
 ```
 
+## Why not FreelyGive/ddev-claude-code?
+
+[FreelyGive/ddev-claude-code](https://github.com/FreelyGive/ddev-claude-code) is another DDEV add-on for Claude Code. It's a fine project — here's why this one exists separately:
+
+| | This add-on | FreelyGive/ddev-claude-code |
+|---|---|---|
+| **Config approach** | Mounts your host `~/.claude/` files read-only — zero setup if you already use Claude on the host | Stores config per-project in `.ddev/claude-code/` via symlinks; requires interactive setup on first run |
+| **Security** | Read-only bind-mounts prevent the container from modifying host config | Symlinks allow the container to write to config files |
+| **Install method** | Official Anthropic installer (`claude.ai/install.sh`) | `npm install -g @anthropic-ai/claude-code` |
+| **Binary ownership** | Explicitly copies to `~/.local/bin/claude` owned by the web user | npm global install runs as root during Docker build |
+| **Mount safety** | Pre-start hook creates stub paths so Docker doesn't silently create directories instead of files | No equivalent safeguard |
+| **Tests / CI** | BATS integration tests, GitHub Actions CI matrix (DDEV stable + HEAD), daily scheduled runs | No tests or CI visible in the repository |
+
+This add-on does one thing: install Claude Code into your DDEV container and share your existing host configuration. Nothing else.
+
 ## Credits
 
 **Contributed and maintained by [@e0ipso](https://github.com/e0ipso)**
