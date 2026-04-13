@@ -11,3 +11,10 @@ hooks:
     # Fix ownership of ~/.claude — Docker bind-mounts create the parent directory
     # as root, which prevents Claude Code from writing to it.
     - exec: "[ -d ~/.claude ] && sudo chown $(id -u):$(id -g) ~/.claude || true"
+
+webimage_extra_packages:
+  - bubblewrap
+  - socat
+  - seccomp
+  - ripgrep
+
