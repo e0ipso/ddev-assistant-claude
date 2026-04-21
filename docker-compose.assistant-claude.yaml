@@ -13,4 +13,4 @@ services:
       - "${HOME}/.claude/settings.json:${HOME}/.claude/settings.json:ro"
       - "${HOME}/.claude/skills:${HOME}/.claude/skills:ro"
       - "${HOME}/.claude/hooks:${HOME}/.claude/hooks:ro"
-      - "${HOME}/.claude/hooks:${HOME}/.claude/commands:ro"
+      - "${HOME}/.claude/commands:${HOME}/.claude/commands:ro"
