@@ -1,22 +1,20 @@
-ARG BASE_IMAGE
-FROM ${BASE_IMAGE:-node:22}
+ARG BASE_IMAGE=node:24
+FROM ${BASE_IMAGE}
 
 ARG TZ=Europe/Madrid
 ENV TZ="$TZ"
 
-ARG CLAUDE_CODE_VERSION=latest
-
-# Install basic development tools and shell script tooling
+# Install basic development tools and iptables/ipset
 RUN apt-get update && apt-get install -y --no-install-recommends \
   less \
   git \
   procps \
   sudo \
   fzf \
-  zsh \
   man-db \
   unzip \
   gnupg2 \
+  gawk \
   gh \
   iptables \
   ipset \
@@ -28,8 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   vim \
   tree \
   python3-yaml \
-  shellcheck \
-  bats \
+  libxml2-utils \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Ensure default node user has access to /usr/local/share
@@ -38,25 +35,31 @@ RUN mkdir -p /usr/local/share/npm-global && \
 
 ARG USERNAME=node
 
-# Persist zsh history.
-RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.zsh_history" \
+# Persist bash history.
+RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
   && mkdir /commandhistory \
-  && touch /commandhistory/.zsh_history \
+  && touch /commandhistory/.bash_history \
   && chown -R $USERNAME /commandhistory
 
 # Pre-create directories that will be needed for bind mounts
-RUN mkdir -p /home/$USERNAME/.claude/debug && chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
+RUN mkdir -p \
+    /home/$USERNAME/.config/opencode \
+    /home/$USERNAME/.local/share/opencode \
+    /home/$USERNAME/.local/share/claude \
+    /home/$USERNAME/.local/state \
+    /home/$USERNAME/.local/bin \
+    /home/$USERNAME/.claude \
+    /home/$USERNAME/.codex
+RUN chown -R $USERNAME:$USERNAME \
+  /home/$USERNAME/.config \
+  /home/$USERNAME/.local \
+  /home/$USERNAME/.claude \
+  /home/$USERNAME/.codex
 
 # Set `DEVCONTAINER` environment variable to help with orientation
 ENV DEVCONTAINER=true
 
 WORKDIR /workspace
-
-ARG GIT_DELTA_VERSION=0.18.2
-RUN ARCH=$(dpkg --print-architecture) && \
-  wget "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
-  sudo dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
-  rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
 # Configure passwordless sudo for node user
 RUN echo "node ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/node && \
@@ -67,27 +70,27 @@ USER node
 
 # Install global packages
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
-ENV PATH=/home/node/.claude/bin:/home/node/.local/bin:/usr/local/share/npm-global/bin:$PATH
-
-# Set the default shell to zsh rather than sh
-ENV SHELL=/bin/zsh
+ENV PATH=$PATH:/usr/local/share/npm-global/bin
 
 # Set the default editor and visual
 ENV EDITOR=vim
 ENV VISUAL=vim
 
-# Default powerline10k theme
-ARG ZSH_IN_DOCKER_VERSION=1.2.0
-RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v${ZSH_IN_DOCKER_VERSION}/zsh-in-docker.sh)" -- \
-  -p git \
-  -p fzf \
-  -a "source /usr/share/doc/fzf/examples/key-bindings.zsh" \
-  -a "source /usr/share/doc/fzf/examples/completion.zsh" \
-  -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.zsh_history" \
-  -x
+# Install OpenCode
+RUN curl -fsSL https://opencode.ai/install | bash
 
-# Install AI coding assistants
-# Claude Code: Use native binary installer (npm is deprecated)
-# Valid options: stable, latest, or specific version (e.g., 2.0.22)
-RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION:-latest} \
-  && echo 'export PATH="$HOME/.claude/bin:$PATH"' >> ~/.zshrc
+# Install Claude Code
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Install Copilot
+RUN npm i -g @github/copilot
+
+# Install Cursor
+RUN curl https://cursor.com/install -fsS | bash
+
+# Install Codex
+RUN curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 CODEX_INSTALL_DIR=/usr/local/share/npm-global/bin sh
+
+# Install t3
+RUN npm i -g t3
+
