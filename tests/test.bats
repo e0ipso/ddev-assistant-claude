@@ -50,15 +50,11 @@ health_checks() {
   assert_success
   assert_output --partial "FULLURL https://${PROJNAME}.ddev.site"
 
-  # Verify Claude is installed at ~/.local/bin and owned by the web user
-  run ddev exec "test -f ~/.local/bin/claude"
+  # Verify claude is on PATH and accessible via non-interactive `ddev exec`
+  run ddev exec "command -v claude"
   assert_success
+  assert_output --partial "claude"
 
-  run ddev exec "stat -c '%U' ~/.local/bin/claude"
-  assert_success
-  refute_output "root"
-
-  # Verify ~/.local/bin is in PATH and claude is accessible
   run ddev exec "claude --version"
   assert_success
 

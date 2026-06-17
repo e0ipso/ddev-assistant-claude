@@ -2,12 +2,11 @@
 hooks:
   pre-start:
     # Ensure host-side Claude Code paths exist so Docker bind-mounts them as the
-    # correct type (file vs directory).  If a file does not exist, Docker would
-    # create a directory at that path instead, breaking the mount.
-    - exec-host: "mkdir -p ~/.claude/skills ~/.claude/hooks && touch ~/.claude/CLAUDE.md ~/.claude/settings.json"
+    # correct type (file vs directory).  If a path does not exist, Docker would
+    # create a directory at it instead, breaking the mount.  These must match every
+    # path mounted in docker-compose.assistant-claude.yaml.
+    - exec-host: "mkdir -p ~/.claude/skills ~/.claude/hooks ~/.claude/commands && touch ~/.claude/CLAUDE.md ~/.claude/settings.json"
   post-start:
-    - exec: "mkdir -p ~/.local/bin && [ -f ~/.local/bin/claude ] || cp /usr/local/lib/claude/claude ~/.local/bin/claude"
-    - exec: "grep -qF '.local/bin' ~/.bashrc 2>/dev/null || printf '\\nexport PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc"
     # Fix ownership of ~/.claude — Docker bind-mounts create the parent directory
     # as root, which prevents Claude Code from writing to it.
     - exec: "[ -d ~/.claude ] && sudo chown $(id -u):$(id -g) ~/.claude || true"
@@ -17,4 +16,3 @@ webimage_extra_packages:
   - socat
   - seccomp
   - ripgrep
-

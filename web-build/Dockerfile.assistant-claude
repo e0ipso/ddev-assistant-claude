@@ -2,26 +2,13 @@
 ARG BASE_IMAGE
 FROM $BASE_IMAGE
 
-# Pre-install Claude Code to /usr/local/lib/claude/claude.
-# This path is outside the web user's home, which DDEV mounts as a Docker named volume
-# at runtime — files placed under the home directory in the image layer would be masked.
-# A post-start hook (config.assistant-claude.yaml) copies the binary into
-# ~/.local/bin/claude on first start so it is user-owned and on the volume.
-# Using cp -L dereferences any symlinks before copying, which prevents a broken
-# symlink at the destination when the installer uses relative symlinks internally.
+# Install Claude Code into /usr/local/bin, which is on PATH for every shell type
+# (login, interactive `ddev ssh`, and non-interactive `ddev exec`) and lives in the
+# image layer — outside the web user's home, which DDEV recreates on every restart.
+# Installing here means `claude` is available immediately with no per-start copy hook
+# that could fail and abort `ddev start`.
+# Using cp -L dereferences the installer's symlink so the standalone binary is copied
+# (not a dangling link); the binary is self-contained and runs regardless of ownership.
 RUN curl -fsSL https://claude.ai/install.sh | bash && \
-    mkdir -p /usr/local/lib/claude && \
-    cp -L /root/.local/bin/claude /usr/local/lib/claude/claude && \
-    chmod 755 /usr/local/lib/claude/claude
-
-# Add ~/.local/bin to PATH for non-interactive shells (ddev exec).
-# ddev exec uses non-login bash (BASH_ENV=/etc/bash.nointeractive.bashrc),
-# which sources /etc/bashrc/*.bashrc — not /etc/profile.d/.
-# We drop a file into /etc/bashrc/ so that our PATH addition is picked up
-# alongside DDEV's own entries (e.g. vendor/bin for drush).
-# Interactive shells (ddev ssh) are covered by a ~/.bashrc.d script created in the
-# post-start hook (config.assistant-claude.yaml), since the home directory is a
-# volume and cannot be populated at build time.
-RUN mkdir -p /etc/bashrc && \
-    printf 'export PATH="$HOME/.local/bin:$PATH"\n' \
-    > /etc/bashrc/assistant-claude.bashrc
+    cp -L /root/.local/bin/claude /usr/local/bin/claude && \
+    chmod 755 /usr/local/bin/claude

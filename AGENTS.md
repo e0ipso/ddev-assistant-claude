@@ -10,9 +10,9 @@
 ## Architecture
 
 - `install.yaml` — DDEV add-on manifest; declares project files and version constraints
-- `config.assistant-claude.yaml` — DDEV hooks: **pre-start** (`exec-host`) creates stub host paths for Claude config files so Docker bind-mounts them as files (not directories); **post-start** (`exec`) copies the binary to `~/.local/bin/claude` and writes PATH configuration for both interactive (`ddev ssh`) and non-interactive (`ddev exec`) shells
+- `config.assistant-claude.yaml` — DDEV hooks: **pre-start** (`exec-host`) creates stub host paths for every Claude config file/dir mounted by the compose file so Docker bind-mounts them as the correct type (files vs directories); **post-start** (`exec`) fixes ownership of `~/.claude` (the bind-mount creates the parent as root)
 - `docker-compose.assistant-claude.yaml` — Bind-mounts the host user's `~/.claude/` config files (CLAUDE.md, settings.json, skills, hooks, commands) read-only into the same path inside the web container so the in-container `claude` shares the host configuration
-- `web-build/Dockerfile.assistant-claude` — Downloads Claude Code via `https://claude.ai/install.sh` and pre-installs it at `/usr/local/lib/claude/claude` (outside the DDEV-mounted user home); sets `BASH_ENV=/etc/bash.env` so that `$HOME/.local/bin` is prepended to `$PATH` for non-interactive shells (`ddev exec`)
+- `web-build/Dockerfile.assistant-claude` — Downloads Claude Code via `https://claude.ai/install.sh` and installs the standalone binary at `/usr/local/bin/claude`, which is on `$PATH` for every shell type and lives in the image layer (outside the home directory DDEV recreates on each restart), so no per-start copy hook is needed
 - `.devcontainer/` — Local development container (Node.js 22, bats, shellcheck, Claude Code)
 - `tests/test.bats` — BATS integration tests
 - `.github/workflows/tests.yml` — CI using `ddev/github-action-add-on-test@v2`, matrix: DDEV `stable` + `HEAD`
@@ -34,8 +34,8 @@ bats ./tests/test.bats --show-output-of-passing-tests --verbose-run --print-outp
 
 Tests spin up a temporary DDEV project (`test-ddev-assistant-claude`), install the add-on, and verify:
 1. `ddev launch` works
-2. `~/.local/bin/claude` exists inside the container and is not owned by `root`
-3. `claude --version` is accessible via `$PATH` (which includes `~/.local/bin`)
+2. `claude` resolves on `$PATH` and `claude --version` works via non-interactive `ddev exec`
+3. `~/.claude` is owned by the web user (not `root`)
 4. `~/.claude/CLAUDE.md` is accessible in the container (mount working)
 
 The `install from release` test (tagged `@release`) installs from GitHub releases; skip it locally with `--filter-tags '!release'`.
