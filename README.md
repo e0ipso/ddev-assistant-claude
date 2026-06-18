@@ -27,14 +27,14 @@ After installation, commit the `.ddev` directory to version control.
 
 ## What it does
 
-- **Installs Claude Code** into the container at `~/.local/bin/claude`, owned by the web user (not root)
+- **Installs Claude Code** into the container at `/usr/local/bin/claude`, on `$PATH` for every shell
 - **Mounts host config files** read-only into the container:
   - `~/.claude/CLAUDE.md` — project and global instructions
   - `~/.claude/settings.json` — Claude Code settings
   - `~/.claude/skills/` — custom skills
   - `~/.claude/hooks/` — event hooks
   - `~/.claude/commands/` — custom slash commands
-- **Configures `$PATH`** so `claude` is accessible in both interactive shells (`ddev ssh`) and non-interactive commands (`ddev exec`)
+- **Available everywhere** — `claude` is on `$PATH` for both interactive shells (`ddev ssh`) and non-interactive commands (`ddev exec`)
 
 ## Usage
 
@@ -56,7 +56,7 @@ ddev exec claude --version
 | **Config approach** | Mounts your host `~/.claude/` files read-only — zero setup if you already use Claude on the host | Stores config per-project in `.ddev/claude-code/` via symlinks; requires interactive setup on first run |
 | **Security** | Read-only bind-mounts prevent the container from modifying host config | Symlinks allow the container to write to config files |
 | **Install method** | Official Anthropic installer (`claude.ai/install.sh`) | `npm install -g @anthropic-ai/claude-code` |
-| **Binary ownership** | Explicitly copies to `~/.local/bin/claude` owned by the web user | npm global install runs as root during Docker build |
+| **Install location** | Standalone binary at `/usr/local/bin/claude`, on `$PATH` for every shell, no per-start hooks | npm global install runs as root during Docker build |
 | **Mount safety** | Pre-start hook creates stub paths so Docker doesn't silently create directories instead of files | No equivalent safeguard |
 | **Tests / CI** | BATS integration tests, GitHub Actions CI matrix (DDEV stable + HEAD), daily scheduled runs | No tests or CI visible in the repository |
 
