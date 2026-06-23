@@ -83,9 +83,10 @@ health_checks() {
   # Negative baseline: a clean project must produce no leaks, so the wrapper
   # exits 0 and prints no warning. This also guards against false positives from
   # DDEV's own environment variables (see web-build/gitleaks.toml allowlist).
+  # "Before continuing" is a phrase unique to the warning banner.
   run ddev exec "gitleaks-scan"
   assert_success
-  refute_output --partial "secret-scan"
+  refute_output --partial "Before continuing"
 
 }
 
@@ -141,7 +142,7 @@ teardown() {
   # (written to stderr) is visible to assert_output.
   run ddev exec "gitleaks-scan"
   assert_success
-  assert_output --partial "secret-scan"
+  assert_output --partial "Before continuing"
   refute_output --partial "${SECRET_ENV}"
   refute_output --partial "${SECRET_FILE}"
 

@@ -41,13 +41,14 @@ fi
 cat >&2 <<'WARN'
 
 ============================================================================
-  WARNING: DDEV secret-scan (assistant-claude add-on)
+  WARNING
 
   gitleaks detected what look like secrets or API keys in this container's
-  environment and/or project .env files (values redacted above). These are
-  often propagated from your GLOBAL DDEV config (e.g. TERMINUS_MACHINE_TOKEN).
+  environment and/or project .env files. These are often propagated from
+  your GLOBAL DDEV config (e.g. TERMINUS_MACHINE_TOKEN).
 
-  Claude Code in this container can READ these values. Before continuing:
+  Claude Code in this container can READ and USE these values.
+  Before continuing:
     * Review every Claude command/skill/hook you run here.
     * Do NOT use --dangerously-skip-permissions or auto-accept / "yolo"
       modes while real secrets are present.
