@@ -53,8 +53,6 @@ cat >&2 <<'WARN'
     * Do NOT use --dangerously-skip-permissions or auto-accept / "yolo"
       modes while real secrets are present.
     * Consider unsetting secrets for projects where Claude Code is active.
-
-  This is a warning only -- `ddev start` was NOT aborted.
 ============================================================================
 
 WARN
