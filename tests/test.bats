@@ -69,6 +69,24 @@ health_checks() {
   run ddev exec "test -f ~/.claude/CLAUDE.md"
   assert_success
 
+  # Verify gitleaks (secret scanner) and the scan wrapper are installed on PATH
+  run ddev exec "command -v gitleaks"
+  assert_success
+  assert_output --partial "gitleaks"
+
+  run ddev exec "gitleaks version"
+  assert_success
+
+  run ddev exec "command -v gitleaks-scan"
+  assert_success
+
+  # Negative baseline: a clean project must produce no leaks, so the wrapper
+  # exits 0 and prints no warning. This also guards against false positives from
+  # DDEV's own environment variables (see web-build/gitleaks.toml allowlist).
+  run ddev exec "gitleaks-scan"
+  assert_success
+  refute_output --partial "secret-scan"
+
 }
 
 teardown() {
@@ -91,6 +109,43 @@ teardown() {
   run ddev restart -y
   assert_success
   health_checks
+}
+
+@test "secret scan warns on env var and .env file, redacted, never blocks" {
+  set -eu -o pipefail
+  echo "# secret-scan detection test for project ${PROJNAME} in $(pwd)" >&3
+  run ddev add-on get "${DIR}"
+  assert_success
+  run ddev restart -y
+  assert_success
+
+  # High-entropy fake secrets. The env var name contains the gitleaks keyword
+  # "TOKEN" and the .env line contains "SECRET_KEY" so the generic-api-key rule
+  # (keyword + entropy >= 3.5) fires deterministically. Fixed literals (not
+  # $RANDOM) keep CI deterministic.
+  SECRET_ENV="a1b2c3d4e5f6g7h8i9j0klmnop"
+  SECRET_FILE="z9y8x7w6v5u4t3s2r1q0ponmlk"
+
+  # (a) inject a global-style web environment variable
+  run ddev config --web-environment-add="TERMINUS_MACHINE_TOKEN=${SECRET_ENV}"
+  assert_success
+  run ddev restart -y
+  assert_success
+
+  # (b) drop a project .env file at the approot (bind-mounted live into the
+  #     container, so the scan can read it)
+  printf 'API_SECRET_KEY=%s\n' "${SECRET_FILE}" > "${TESTDIR}/.env"
+
+  # The wrapper must warn, redact both plaintext values, and still exit 0 so it
+  # never aborts `ddev start`. bats merges stderr into $output, so the warning
+  # (written to stderr) is visible to assert_output.
+  run ddev exec "gitleaks-scan"
+  assert_success
+  assert_output --partial "secret-scan"
+  refute_output --partial "${SECRET_ENV}"
+  refute_output --partial "${SECRET_FILE}"
+
+  rm -f "${TESTDIR}/.env"
 }
 
 # bats test_tags=release

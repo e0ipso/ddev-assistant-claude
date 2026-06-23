@@ -1,0 +1,18 @@
+#ddev-generated
+# Gitleaks config for the assistant-claude post-start secret scan.
+# Extends gitleaks' built-in ruleset and allowlists benign DDEV-provided
+# environment variables BY NAME PREFIX (never by value) so a clean baseline
+# does not raise false positives. Add project-specific benign vars as needed.
+title = "ddev-assistant-claude env scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Benign DDEV-provided environment variables"
+regexTarget = "line"
+regexes = [
+  '''^DDEV_[A-Z0-9_]+=''',
+  '''^IS_DDEV_PROJECT=''',
+  '''^DRUSH_OPTIONS_URI=''',
+]

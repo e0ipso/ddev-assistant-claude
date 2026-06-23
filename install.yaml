@@ -2,6 +2,8 @@ name: assistant-claude
 
 project_files:
   - web-build/Dockerfile.assistant-claude
+  - web-build/gitleaks-scan.sh
+  - web-build/gitleaks.toml
   - config.assistant-claude.yaml
   - docker-compose.assistant-claude.yaml
 

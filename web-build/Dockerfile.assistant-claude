@@ -12,3 +12,27 @@ FROM $BASE_IMAGE
 RUN curl -fsSL https://claude.ai/install.sh | bash && \
     cp -L /root/.local/bin/claude /usr/local/bin/claude && \
     chmod 755 /usr/local/bin/claude
+
+# Install gitleaks (secret scanner) into /usr/local/bin, pinned and arch-aware
+# (the DDEV web image runs on amd64 and arm64 hosts). Used by the post-start
+# secret-scan hook to warn — never block — when secrets/API keys are present.
+ARG GITLEAKS_VERSION=8.30.1
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+      x86_64)  gl_arch="x64" ;; \
+      aarch64) gl_arch="arm64" ;; \
+      *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${gl_arch}.tar.gz"; \
+    curl -fsSL "$url" -o /tmp/gitleaks.tar.gz; \
+    tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks; \
+    rm -f /tmp/gitleaks.tar.gz; \
+    chmod 755 /usr/local/bin/gitleaks; \
+    gitleaks version
+
+# Ship the scan wrapper and gitleaks config into the image layer so they live
+# outside the home directory DDEV recreates on each restart.
+COPY gitleaks-scan.sh /usr/local/bin/gitleaks-scan
+COPY gitleaks.toml /etc/gitleaks/gitleaks.toml
+RUN chmod 755 /usr/local/bin/gitleaks-scan

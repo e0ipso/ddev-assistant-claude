@@ -10,6 +10,10 @@ hooks:
     # Fix ownership of ~/.claude — Docker bind-mounts create the parent directory
     # as root, which prevents Claude Code from writing to it.
     - exec: "[ -d ~/.claude ] && sudo chown $(id -u):$(id -g) ~/.claude || true"
+    # Warn (never block) if the container environment or project .env files
+    # contain secrets/API keys. gitleaks-scan always exits 0; the command -v
+    # guard keeps ddev start safe even if the binary is somehow missing.
+    - exec: "command -v gitleaks-scan >/dev/null && gitleaks-scan || true"
 
 webimage_extra_packages:
   - bubblewrap
