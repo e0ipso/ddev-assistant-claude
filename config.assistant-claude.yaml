@@ -5,11 +5,14 @@ hooks:
     # correct type (file vs directory).  If a path does not exist, Docker would
     # create a directory at it instead, breaking the mount.  These must match every
     # path mounted in docker-compose.assistant-claude.yaml.
-    - exec-host: "mkdir -p ~/.claude/skills ~/.claude/hooks ~/.claude/commands && touch ~/.claude/CLAUDE.md ~/.claude/settings.json"
+    - exec-host: "mkdir -p ~/.claude/skills ~/.claude/hooks ~/.claude/commands && touch ~/.claude/CLAUDE.md ~/.claude/settings.json ~/.claude/.credentials.json"
   post-start:
     # Fix ownership of ~/.claude — Docker bind-mounts create the parent directory
     # as root, which prevents Claude Code from writing to it.
     - exec: "[ -d ~/.claude ] && sudo chown $(id -u):$(id -g) ~/.claude || true"
+    # Seed host credentials once per container lifecycle; allow in-container drift until
+    # the next restart, when a fresh container re-seeds from the read-only mount.
+    - exec: "seed=\"$HOME/.cred-seed/claude/.credentials.json\"; target=\"$HOME/.claude/.credentials.json\"; if [ ! -f \"$target\" ] && [ -f \"$seed\" ]; then cp \"$seed\" \"$target\" && chmod 600 \"$target\"; fi"
 
 webimage_extra_packages:
   - bubblewrap

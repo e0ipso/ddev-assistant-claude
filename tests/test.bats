@@ -69,6 +69,14 @@ health_checks() {
   run ddev exec "test -f ~/.claude/CLAUDE.md"
   assert_success
 
+  # Verify host credentials are mounted read-only under ~/.cred-seed/
+  run ddev exec "test -f ~/.cred-seed/claude/.credentials.json"
+  assert_success
+
+  # Verify credentials are seeded into the writable runtime path on start
+  run ddev exec "test -f ~/.claude/.credentials.json"
+  assert_success
+
 }
 
 teardown() {

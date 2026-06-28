@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**ddev-assistant-claude** is a DDEV add-on that installs Claude Code into the DDEV web container and shares the host user's Claude configuration (CLAUDE.md, settings.json, skills, hooks, commands) into the container without any additional setup.
+**ddev-assistant-claude** is a DDEV add-on that installs Claude Code into the DDEV web container and shares the host user's Claude configuration (CLAUDE.md, settings.json, skills, hooks, commands) into the container without any additional setup. Host credentials are seeded on start from a read-only mount under `~/.cred-seed/` so in-container auth can drift until the next restart.
 
 - **DDEV version requirement**: >= v1.24.0
 - **Repository**: `e0ipso/ddev-assistant-claude`
@@ -10,8 +10,8 @@
 ## Architecture
 
 - `install.yaml` — DDEV add-on manifest; declares project files and version constraints
-- `config.assistant-claude.yaml` — DDEV hooks: **pre-start** (`exec-host`) creates stub host paths for every Claude config file/dir mounted by the compose file so Docker bind-mounts them as the correct type (files vs directories); **post-start** (`exec`) fixes ownership of `~/.claude` (the bind-mount creates the parent as root)
-- `docker-compose.assistant-claude.yaml` — Bind-mounts the host user's `~/.claude/` config files (CLAUDE.md, settings.json, skills, hooks, commands) read-only into the same path inside the web container so the in-container `claude` shares the host configuration
+- `config.assistant-claude.yaml` — DDEV hooks: **pre-start** (`exec-host`) creates stub host paths for every Claude config file/dir mounted by the compose file so Docker bind-mounts them as the correct type (files vs directories); **post-start** (`exec`) fixes ownership of `~/.claude` (the bind-mount creates the parent as root) and seeds `~/.claude/.credentials.json` from the read-only cred-seed mount when missing
+- `docker-compose.assistant-claude.yaml` — Bind-mounts the host user's `~/.claude/` config files (CLAUDE.md, settings.json, skills, hooks, commands) read-only into the same path inside the web container so the in-container `claude` shares the host configuration; mounts `~/.claude/.credentials.json` read-only under `~/.cred-seed/claude/` for one-time auth seeding per container lifecycle
 - `web-build/Dockerfile.assistant-claude` — Downloads Claude Code via `https://claude.ai/install.sh` and installs the standalone binary at `/usr/local/bin/claude`, which is on `$PATH` for every shell type and lives in the image layer (outside the home directory DDEV recreates on each restart), so no per-start copy hook is needed
 - `.devcontainer/` — Local development container (Node.js 22, bats, shellcheck, Claude Code)
 - `tests/test.bats` — BATS integration tests
@@ -37,6 +37,7 @@ Tests spin up a temporary DDEV project (`test-ddev-assistant-claude`), install t
 2. `claude` resolves on `$PATH` and `claude --version` works via non-interactive `ddev exec`
 3. `~/.claude` is owned by the web user (not `root`)
 4. `~/.claude/CLAUDE.md` is accessible in the container (mount working)
+5. Host credentials mount under `~/.cred-seed/claude/.credentials.json` and seed into `~/.claude/.credentials.json` on start
 
 The `install from release` test (tagged `@release`) installs from GitHub releases; skip it locally with `--filter-tags '!release'`.
 

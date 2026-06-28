@@ -34,6 +34,7 @@ After installation, commit the `.ddev` directory to version control.
   - `~/.claude/skills/` — custom skills
   - `~/.claude/hooks/` — event hooks
   - `~/.claude/commands/` — custom slash commands
+- **Seeds host authentication** on start: `~/.claude/.credentials.json` is mounted read-only under `~/.cred-seed/` and copied into the writable runtime path when the container starts. In-container auth can drift until the next `ddev restart`, when credentials are re-seeded from the host
 - **Available everywhere** — `claude` is on `$PATH` for both interactive shells (`ddev ssh`) and non-interactive commands (`ddev exec`)
 
 ## Usage
