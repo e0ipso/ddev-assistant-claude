@@ -1,20 +1,7 @@
 #ddev-generated
-# Mount Claude Code host configuration into the web container so that `claude`
-# inside the container shares the same global config, settings, skills, and hooks
-# as the host user's Claude Code installation.
-# Host credentials bind-mount read-only under ~/.cred-seed/; the post-start hook
-# copies them into ~/.claude/.credentials.json when missing so auth can drift in
-# the container until the next `ddev restart`, when host credentials are re-seeded.
-# The pre-start hook in config.assistant-claude.yaml ensures all host paths exist
-# as the correct type (file vs. directory) before Docker attempts to bind-mount them.
-# Without that hook, Docker would create a directory at any missing file path,
-# silently breaking the mount instead of raising an error.
+# Mount host Claude Code config read-only into the seed directory. The post-start
+# hook mirrors it into the writable ~/.claude runtime directory on every start.
 services:
   web:
     volumes:
-      - "${HOME}/.claude/CLAUDE.md:${HOME}/.claude/CLAUDE.md:ro"
-      - "${HOME}/.claude/settings.json:${HOME}/.claude/settings.json:ro"
-      - "${HOME}/.claude/skills:${HOME}/.claude/skills:ro"
-      - "${HOME}/.claude/hooks:${HOME}/.claude/hooks:ro"
-      - "${HOME}/.claude/commands:${HOME}/.claude/commands:ro"
-      - "${HOME}/.claude/.credentials.json:${HOME}/.cred-seed/claude/.credentials.json:ro"
+      - "${HOME}/.claude:${HOME}/.cred-seed/claude:ro"
