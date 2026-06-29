@@ -1,18 +1,24 @@
 #ddev-generated
 hooks:
   pre-start:
-    # Ensure host-side Claude Code paths exist so Docker bind-mounts them as the
-    # correct type (file vs directory).  If a path does not exist, Docker would
-    # create a directory at it instead, breaking the mount.  These must match every
-    # path mounted in docker-compose.assistant-claude.yaml.
-    - exec-host: "mkdir -p ~/.claude/skills ~/.claude/hooks ~/.claude/commands && touch ~/.claude/CLAUDE.md ~/.claude/settings.json ~/.claude/.credentials.json"
+    # Ensure host-side Claude Code config exists before Docker bind-mounts it.
+    - exec-host: "mkdir -p ~/.claude"
   post-start:
-    # Fix ownership of ~/.claude — Docker bind-mounts create the parent directory
-    # as root, which prevents Claude Code from writing to it.
-    - exec: "[ -d ~/.claude ] && sudo chown $(id -u):$(id -g) ~/.claude || true"
-    # Seed host credentials once per container lifecycle; allow in-container drift until
-    # the next restart, when a fresh container re-seeds from the read-only mount.
-    - exec: "seed=\"$HOME/.cred-seed/claude/.credentials.json\"; target=\"$HOME/.claude/.credentials.json\"; if [ ! -f \"$target\" ] && [ -f \"$seed\" ]; then cp \"$seed\" \"$target\" && chmod 600 \"$target\"; fi"
+    # Mirror the read-only host seed into the writable runtime config directory on
+    # every start. Host config is authoritative, so stale container-only files are
+    # removed before copying.
+    - exec: |
+        set -eu
+        seed_dir="${HOME}/.cred-seed/claude"
+        target_dir="${HOME}/.claude"
+        if [ -d "${seed_dir}" ]; then
+          sudo rm -rf "${target_dir}"
+          mkdir -p "${target_dir}"
+          cp -R -P "${seed_dir}/." "${target_dir}/"
+          sudo chown -R "$(id -u):$(id -g)" "${target_dir}"
+          chmod 700 "${target_dir}"
+          [ ! -f "${target_dir}/.credentials.json" ] || chmod 600 "${target_dir}/.credentials.json"
+        fi
 
 webimage_extra_packages:
   - bubblewrap

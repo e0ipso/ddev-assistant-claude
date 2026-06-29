@@ -27,6 +27,10 @@ setup() {
   export PROJNAME="test-$(basename "${GITHUB_REPO}")"
   mkdir -p "${HOME}/tmp"
   export TESTDIR="$(mktemp -d "${HOME}/tmp/${PROJNAME}.XXXXXX")"
+  export TEST_MARKER="$(basename "${TESTDIR}")"
+  export TEST_HOST_CLAUDE_COMMAND="${HOME}/.claude/commands/${TEST_MARKER}.md"
+  export TEST_HOST_CLAUDE_CREDENTIALS="${HOME}/.claude/.credentials.json"
+  export TEST_CREATED_CLAUDE_CREDENTIALS=false
   export DDEV_NONINTERACTIVE=true
   export DDEV_NO_INSTRUMENTATION=true
   ddev delete -Oy "${PROJNAME}" >/dev/null 2>&1 || true
@@ -35,6 +39,20 @@ setup() {
   assert_success
   run ddev start -y
   assert_success
+}
+
+prepare_host_claude_credentials() {
+  mkdir -p "${HOME}/.claude"
+  if [ ! -e "${TEST_HOST_CLAUDE_CREDENTIALS}" ] && [ ! -L "${TEST_HOST_CLAUDE_CREDENTIALS}" ]; then
+    printf '{"ddev_assistant_claude_test":"%s"}\n' "${TEST_MARKER}" >"${TEST_HOST_CLAUDE_CREDENTIALS}"
+    export TEST_CREATED_CLAUDE_CREDENTIALS=true
+  fi
+}
+
+prepare_host_claude_config() {
+  prepare_host_claude_credentials
+  mkdir -p "${HOME}/.claude/commands"
+  printf 'seeded command from %s\n' "${TEST_MARKER}" >"${TEST_HOST_CLAUDE_COMMAND}"
 }
 
 health_checks() {
@@ -63,10 +81,8 @@ health_checks() {
   assert_success
   refute_output "root"
 
-  # Verify Claude Code host config is mounted as a regular file (the pre-start hook
-  # ensures the host path exists as a file; without it Docker would bind-mount a
-  # directory there instead)
-  run ddev exec "test -f ~/.claude/CLAUDE.md"
+  # Verify Claude Code runtime config exists and is writable by the web user.
+  run ddev exec "test -d ~/.claude && test -w ~/.claude"
   assert_success
 
   # Verify host credentials are mounted read-only under ~/.cred-seed/
@@ -79,9 +95,36 @@ health_checks() {
 
 }
 
+seed_mirror_checks() {
+  # Verify host config is mounted only in the seed area and copied into the
+  # writable runtime path.
+  run ddev exec "test -f ~/.cred-seed/claude/commands/${TEST_MARKER}.md"
+  assert_success
+
+  run ddev exec "test -f ~/.claude/commands/${TEST_MARKER}.md"
+  assert_success
+
+  run ddev exec "grep -F 'seeded command from ${TEST_MARKER}' ~/.cred-seed/claude/commands/${TEST_MARKER}.md"
+  assert_success
+
+  # Verify restart-time mirroring deletes container-only files.
+  run ddev exec "mkdir -p ~/.claude/commands && touch ~/.claude/commands/container-only-${TEST_MARKER}.md"
+  assert_success
+
+  run ddev restart -y
+  assert_success
+
+  run ddev exec "test ! -e ~/.claude/commands/container-only-${TEST_MARKER}.md"
+  assert_success
+}
+
 teardown() {
   set -eu -o pipefail
   ddev delete -Oy "${PROJNAME}" >/dev/null 2>&1
+  rm -f "${TEST_HOST_CLAUDE_COMMAND}"
+  if [ "${TEST_CREATED_CLAUDE_CREDENTIALS}" = true ]; then
+    rm -f "${TEST_HOST_CLAUDE_CREDENTIALS}"
+  fi
   # Persist TESTDIR if running inside GitHub Actions. Useful for uploading test result artifacts
   # See example at https://github.com/ddev/github-action-add-on-test#preserving-artifacts
   if [ -n "${GITHUB_ENV:-}" ]; then
@@ -94,17 +137,20 @@ teardown() {
 @test "install from directory" {
   set -eu -o pipefail
   echo "# ddev add-on get ${DIR} with project ${PROJNAME} in $(pwd)" >&3
+  prepare_host_claude_config
   run ddev add-on get "${DIR}"
   assert_success
   run ddev restart -y
   assert_success
   health_checks
+  seed_mirror_checks
 }
 
 # bats test_tags=release
 @test "install from release" {
   set -eu -o pipefail
   echo "# ddev add-on get ${GITHUB_REPO} with project ${PROJNAME} in $(pwd)" >&3
+  prepare_host_claude_credentials
   run ddev add-on get "${GITHUB_REPO}"
   assert_success
   run ddev restart -y
