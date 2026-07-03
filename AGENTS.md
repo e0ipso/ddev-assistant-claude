@@ -4,12 +4,13 @@
 
 **ddev-assistant-claude** is a DDEV add-on that installs Claude Code into the DDEV web container and seeds the host user's Claude configuration (CLAUDE.md, settings.json, skills, hooks, commands, credentials) into the container without any additional setup. The host `~/.claude/` directory is mounted read-only under `~/.cred-seed/claude/` and mirrored into the writable in-container `~/.claude/` on every start.
 
-- **DDEV version requirement**: >= v1.24.0
+- **DDEV version requirement**: >= v1.24.10
 - **Repository**: `e0ipso/ddev-assistant-claude`
+- **Add-on dependencies**: `Lullabot/ddev-gitleaks` (declared in `install.yaml`; DDEV installs it automatically for non-blocking secret scanning of the container env and project `.env` files)
 
 ## Architecture
 
-- `install.yaml` — DDEV add-on manifest; declares project files and version constraints
+- `install.yaml` — DDEV add-on manifest; declares project files, version constraints, and add-on dependencies (`Lullabot/ddev-gitleaks`)
 - `config.assistant-claude.yaml` — DDEV hooks: **pre-start** (`exec-host`) ensures the host user's `~/.claude/` directory exists; **post-start** (`exec`) deletes stale in-container `~/.claude/` content, copies the read-only seed into a writable runtime `~/.claude/`, fixes ownership, and locks down credential permissions
 - `docker-compose.assistant-claude.yaml` — Bind-mounts the host user's `~/.claude/` directory read-only under `~/.cred-seed/claude/`; the container never live-mounts individual config files into `~/.claude/`
 - `web-build/Dockerfile.assistant-claude` — Downloads Claude Code via `https://claude.ai/install.sh` and installs the standalone binary at `/usr/local/bin/claude`, which is on `$PATH` for every shell type and lives in the image layer (outside the home directory DDEV recreates on each restart), so no per-start copy hook is needed
