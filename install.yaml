@@ -1,5 +1,12 @@
 name: assistant-claude
 
+# Pull in the standalone gitleaks add-on so secrets in the container environment
+# and project .env files are scanned and surfaced (redacted, non-blocking) — a
+# safeguard for credentials DDEV propagates into the web container where Claude
+# Code runs. Declared in org/repo format so DDEV can resolve it.
+dependencies:
+  - Lullabot/ddev-gitleaks
+
 project_files:
   - web-build/Dockerfile.assistant-claude
   - config.assistant-claude.yaml
@@ -8,4 +15,6 @@ project_files:
 post_install_actions:
   - echo "Please run 'ddev restart' to build the new configuration."
 
-ddev_version_constraint: '>= v1.24.0'
+# Lullabot/ddev-gitleaks requires DDEV >= v1.24.10; match it here since we
+# depend on that add-on.
+ddev_version_constraint: '>= v1.24.10'

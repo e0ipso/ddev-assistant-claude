@@ -13,7 +13,7 @@ Once installed, running `claude` inside `ddev ssh` or `ddev exec` uses a writabl
 
 ## Requirements
 
-- DDEV >= v1.24.0
+- DDEV >= v1.24.10
 - A Claude Code installation on the host (for configuration sharing)
 
 ## Installation
@@ -36,6 +36,12 @@ After installation, commit the `.ddev` directory to version control.
   - `~/.claude/commands/` — custom slash commands
 - **Mirrors host authentication** on restart: `~/.claude/.credentials.json` is part of the same seeded tree, so credentials and config are refreshed from the host whenever the container starts
 - **Available everywhere** — `claude` is on `$PATH` for both interactive shells (`ddev ssh`) and non-interactive commands (`ddev exec`)
+
+## Secret scanning
+
+This add-on depends on [Lullabot/ddev-gitleaks](https://github.com/Lullabot/ddev-gitleaks), which DDEV installs automatically alongside it. That add-on adds a non-blocking `post-start` scan of the container environment and project `.env` files, warning (with redacted values) when likely secrets or API keys are present.
+
+DDEV propagates global `web_environment` into every project, so a secret set globally — or one living in a project `.env` — becomes readable by Claude Code running in the web container. The scan surfaces that exposure so you can decide whether to proceed; it never blocks `ddev start`.
 
 ## Usage
 

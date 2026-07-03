@@ -93,6 +93,12 @@ health_checks() {
   run ddev exec "test -f ~/.claude/.credentials.json"
   assert_success
 
+  # Verify the Lullabot/ddev-gitleaks dependency was resolved and installed by DDEV:
+  # its scan wrapper should resolve on $PATH in the web container.
+  run ddev exec "command -v gitleaks-scan"
+  assert_success
+  assert_output --partial "gitleaks-scan"
+
 }
 
 seed_mirror_checks() {
