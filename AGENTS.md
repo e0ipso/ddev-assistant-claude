@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**ddev-assistant-claude** is a DDEV add-on that installs Claude Code into the DDEV web container and seeds the host user's Claude configuration (CLAUDE.md, settings.json, skills, hooks, commands, credentials) into the container without any additional setup. The host `~/.claude/` directory is mounted read-only under `~/.cred-seed/claude/` and mirrored into the writable in-container `~/.claude/` on every start.
+**ddev-assistant-claude** is a DDEV add-on that installs Claude Code into the DDEV web container and seeds the host user's Claude configuration (CLAUDE.md, settings.json, skills, hooks, commands, credentials) into the container without any additional setup. The host `~/.claude/` directory is mounted read-only under `/home/.cred-seed/claude/` (a fixed path, not `$HOME`-relative -- see `docker-compose.assistant-claude.yaml` for why) and mirrored into the writable in-container `~/.claude/` on every start.
 
 - **DDEV version requirement**: >= v1.24.0
 - **Repository**: `e0ipso/ddev-assistant-claude`

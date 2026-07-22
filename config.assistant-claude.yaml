@@ -9,7 +9,10 @@ hooks:
     # removed before copying.
     - exec: |
         set -eu
-        seed_dir="${HOME}/.cred-seed/claude"
+        # Must match the fixed container-side mount target in
+        # docker-compose.assistant-claude.yaml (not a $HOME-relative path) --
+        # see the comment there for why.
+        seed_dir="/home/.cred-seed/claude"
         target_dir="${HOME}/.claude"
         if [ -d "${seed_dir}" ]; then
           sudo rm -rf "${target_dir}"

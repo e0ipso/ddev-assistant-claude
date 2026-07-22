@@ -85,8 +85,8 @@ health_checks() {
   run ddev exec "test -d ~/.claude && test -w ~/.claude"
   assert_success
 
-  # Verify host credentials are mounted read-only under ~/.cred-seed/
-  run ddev exec "test -f ~/.cred-seed/claude/.credentials.json"
+  # Verify host credentials are mounted read-only under /home/.cred-seed/
+  run ddev exec "test -f /home/.cred-seed/claude/.credentials.json"
   assert_success
 
   # Verify credentials are seeded into the writable runtime path on start
@@ -98,13 +98,13 @@ health_checks() {
 seed_mirror_checks() {
   # Verify host config is mounted only in the seed area and copied into the
   # writable runtime path.
-  run ddev exec "test -f ~/.cred-seed/claude/commands/${TEST_MARKER}.md"
+  run ddev exec "test -f /home/.cred-seed/claude/commands/${TEST_MARKER}.md"
   assert_success
 
   run ddev exec "test -f ~/.claude/commands/${TEST_MARKER}.md"
   assert_success
 
-  run ddev exec "grep -F 'seeded command from ${TEST_MARKER}' ~/.cred-seed/claude/commands/${TEST_MARKER}.md"
+  run ddev exec "grep -F 'seeded command from ${TEST_MARKER}' /home/.cred-seed/claude/commands/${TEST_MARKER}.md"
   assert_success
 
   # Verify restart-time mirroring deletes container-only files.
