@@ -1,25 +1,16 @@
 #ddev-generated
-# Project-scoped, persistent Claude Code state, bind-mounted read-write. Because
-# it's a live mount rather than a copy, writes made inside the container land
-# directly in .ddev/claude-code/ on the host and survive
-# `ddev restart`/`ddev poweroff` -- nothing is ever discarded between starts.
+# Project-scoped, persistent Claude Code state, bind-mounted read-write so
+# container writes land on the host and survive `ddev restart`/`ddev poweroff`.
 #
-# Claude Code splits its state across two paths in $HOME: the ~/.claude/
-# directory (history, sessions, credentials, config) and a sibling ~/.claude.json
-# file (OAuth account/session identity -- machineID, userID, project trust
-# state). Both are mounted here; mounting only the directory leaves
-# ~/.claude.json ephemeral, so the container gets a fresh machine/session
-# identity on every restart even though the credentials themselves persist.
+# Claude Code keeps state in two places: ~/.claude/ (history, sessions,
+# credentials) and a sibling ~/.claude.json (machine/session identity, project
+# trust state). Both are mounted -- skipping ~/.claude.json means a fresh
+# machine identity every restart even though credentials persist.
 #
-# The mount targets are fixed paths rather than "${HOME}/.claude" /
-# "${HOME}/.claude.json": ${HOME} is interpolated once, on the host, when
-# docker-compose renders this file, so on hosts where the host home path
-# differs from the container's (e.g. macOS's /Users/<user> vs. the container's
-# /home/<user>) both sides of the mount would resolve to the host-style path.
-# The post-start hook (config.assistant-claude.yaml) runs *inside* the
-# container, where $HOME correctly resolves, and symlinks $HOME/.claude and
-# $HOME/.claude.json to these fixed paths instead of relying on them directly
-# here.
+# Mount targets are fixed paths rather than "${HOME}/.claude": $HOME is
+# interpolated on the host at compose-render time and can differ from the
+# container's $HOME (e.g. macOS). The post-start hook symlinks $HOME/.claude
+# and $HOME/.claude.json to these paths from inside the container instead.
 services:
   web:
     volumes:

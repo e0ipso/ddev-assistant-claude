@@ -1,13 +1,9 @@
 #ddev-generated
 hooks:
   pre-start:
-    # Seed the project-local persistent store from the developer's global ~/.claude
-    # (and its sibling ~/.claude.json, which holds OAuth account/session identity --
-    # see docker-compose.assistant-claude.yaml), but only the first time (if the
-    # store doesn't exist yet). After that, the store is fully independent of the
-    # host's ~/.claude: nothing written inside the container is ever overwritten
-    # from the host side on a later start, and the container never touches the
-    # host's real ~/.claude again.
+    # Seed the project-local store from ~/.claude and ~/.claude.json, but only
+    # the first time. After that it's independent of the host: nothing written
+    # in the container gets overwritten on a later start.
     - exec-host: |
         set -eu
         store="$DDEV_APPROOT/.ddev/claude-code/.claude"
@@ -17,10 +13,8 @@ hooks:
             cp -R -P "${HOME}/.claude/." "${store}/"
           fi
         fi
-        # Docker requires a bind-mounted file to exist on the host before the
-        # container starts, or it silently creates a directory at the mount target
-        # instead. Falling back to an empty JSON object guarantees the file is
-        # always there, even for developers with no host ~/.claude.json yet.
+        # Docker auto-creates a directory at a missing bind-mount file path, so
+        # this must exist before start; fall back to an empty object.
         store_json="$DDEV_APPROOT/.ddev/claude-code/.claude.json"
         if [ ! -e "${store_json}" ]; then
           if [ -f "${HOME}/.claude.json" ]; then
@@ -30,11 +24,9 @@ hooks:
           fi
         fi
   post-start:
-    # Point $HOME/.claude and $HOME/.claude.json at the persistent, bind-mounted
-    # project store. Must run inside the container (exec, not exec-host) so $HOME
-    # resolves to the container's home, not the host's -- see
-    # docker-compose.assistant-claude.yaml for why the mounts themselves use fixed
-    # paths instead of $HOME.
+    # Symlink $HOME/.claude and $HOME/.claude.json to the bind-mounted store.
+    # Must run in-container (exec, not exec-host) so $HOME resolves to the
+    # container's home, not the host's.
     - exec: |
         set -eu
         store="/home/.claude-project-store"

@@ -114,9 +114,7 @@ health_checks() {
   run bash -c "test -f '${TESTDIR}/.ddev/claude-code/.claude.json'"
   assert_success
 
-  # Verify ~/.claude.json exists in the container and is a symlink to the
-  # persistent, bind-mounted store file -- not just a fresh, ephemeral file that
-  # would lose its OAuth account/session identity on every restart.
+  # Verify ~/.claude.json is a symlink to the persistent, bind-mounted store
   run ddev exec "test -f ~/.claude.json"
   assert_success
 
@@ -165,10 +163,8 @@ seed_mirror_checks() {
 
   rm -f "${TEST_HOST_CLAUDE_COMMAND}.late"
 
-  # Verify an in-container edit to ~/.claude.json survives a restart -- the same
-  # live-mount guarantee as ~/.claude itself, and the whole point of also
-  # persisting this file: Claude Code's machine/session identity lives here, not
-  # just in ~/.claude/.credentials.json.
+  # Verify an in-container edit to ~/.claude.json survives a restart, same as
+  # ~/.claude/ itself.
   run ddev exec "printf '{\"ddev_assistant_claude_test\":\"%s\"}' '${TEST_MARKER}' > ~/.claude.json"
   assert_success
 
