@@ -7,9 +7,9 @@
 
 ## Overview
 
-This DDEV add-on installs [Claude Code](https://claude.ai/code) inside the DDEV web container and gives it a persistent, project-scoped configuration — seeded once from your host Claude configuration (`CLAUDE.md`, `settings.json`, skills, hooks, commands, credentials), then fully independent of the host afterward.
+This DDEV add-on installs [Claude Code](https://claude.ai/code) inside the DDEV web container and gives it a persistent, project-scoped configuration — seeded once from your host Claude configuration (`CLAUDE.md`, `settings.json`, skills, hooks, commands, credentials, account/session identity), then fully independent of the host afterward.
 
-Once installed, running `claude` inside `ddev ssh` or `ddev exec` uses a writable, project-local `~/.claude` that survives `ddev restart` and `ddev poweroff` — conversation history, sessions, and any in-container changes persist just like they would on a host install.
+Once installed, running `claude` inside `ddev ssh` or `ddev exec` uses a writable, project-local `~/.claude` and `~/.claude.json` that survive `ddev restart` and `ddev poweroff` — conversation history, sessions, login state, and any in-container changes persist just like they would on a host install.
 
 ## Requirements
 
@@ -28,14 +28,14 @@ After installation, commit the `.ddev` directory to version control. `ddev add-o
 ## What it does
 
 - **Installs Claude Code** into the container at `/usr/local/bin/claude`, on `$PATH` for every shell
-- **Seeds host configuration once**: the first time the add-on starts with no existing project store, your host `~/.claude/` tree (CLAUDE.md, settings.json, skills, hooks, commands, credentials) is copied into a project-local, persistent store at `.ddev/claude-code/.claude/` on the host
-- **Persists across restarts**: that project-local store is bind-mounted read-write into the container and symlinked to `~/.claude`, so conversation history, sessions, and any other in-container changes are written straight to host disk and survive `ddev restart`/`ddev poweroff` — nothing is copied-and-discarded on every start
-- **Never touches your real host `~/.claude` again** after the initial seed — the project store is independent per-project, so containers can't drift the config you use natively on the host, and one project's Claude state never leaks into another's
+- **Seeds host configuration once**: the first time the add-on starts with no existing project store, your host `~/.claude/` tree (CLAUDE.md, settings.json, skills, hooks, commands, credentials) *and* your host `~/.claude.json` (account/session identity, project trust state) are copied into a project-local, persistent store at `.ddev/claude-code/.claude/` and `.ddev/claude-code/.claude.json` on the host
+- **Persists across restarts**: that project-local store is bind-mounted read-write into the container and symlinked to `~/.claude` and `~/.claude.json`, so conversation history, sessions, login state, and any other in-container changes are written straight to host disk and survive `ddev restart`/`ddev poweroff` — nothing is copied-and-discarded on every start, and you're not forced to re-authenticate after every restart
+- **Never touches your real host `~/.claude`/`~/.claude.json` again** after the initial seed — the project store is independent per-project, so containers can't drift the config you use natively on the host, and one project's Claude state never leaks into another's
 - **Available everywhere** — `claude` is on `$PATH` for both interactive shells (`ddev ssh`) and non-interactive commands (`ddev exec`)
 
 ## Security
 
-`.ddev/claude-code/.claude/` contains live OAuth credentials (`.credentials.json`) once seeded. Installation adds a `/.ddev/claude-code/` entry to your project's `.gitignore` automatically; if you're upgrading from an older version of this add-on, add it yourself before committing:
+`.ddev/claude-code/.claude/` and `.ddev/claude-code/.claude.json` contain live OAuth credentials (`.credentials.json`) and account/session identity once seeded. Installation adds a `/.ddev/claude-code/` entry to your project's `.gitignore` automatically; if you're upgrading from an older version of this add-on, add it yourself before committing:
 
 ```gitignore
 /.ddev/claude-code/

@@ -31,6 +31,8 @@ setup() {
   export TEST_HOST_CLAUDE_COMMAND="${HOME}/.claude/commands/${TEST_MARKER}.md"
   export TEST_HOST_CLAUDE_CREDENTIALS="${HOME}/.claude/.credentials.json"
   export TEST_CREATED_CLAUDE_CREDENTIALS=false
+  export TEST_HOST_CLAUDE_JSON="${HOME}/.claude.json"
+  export TEST_CREATED_CLAUDE_JSON=false
   export DDEV_NONINTERACTIVE=true
   export DDEV_NO_INSTRUMENTATION=true
   ddev delete -Oy "${PROJNAME}" >/dev/null 2>&1 || true
@@ -49,8 +51,16 @@ prepare_host_claude_credentials() {
   fi
 }
 
+prepare_host_claude_json() {
+  if [ ! -e "${TEST_HOST_CLAUDE_JSON}" ]; then
+    printf '{"ddev_assistant_claude_test":"%s"}\n' "${TEST_MARKER}" >"${TEST_HOST_CLAUDE_JSON}"
+    export TEST_CREATED_CLAUDE_JSON=true
+  fi
+}
+
 prepare_host_claude_config() {
   prepare_host_claude_credentials
+  prepare_host_claude_json
   mkdir -p "${HOME}/.claude/commands"
   printf 'seeded command from %s\n' "${TEST_MARKER}" >"${TEST_HOST_CLAUDE_COMMAND}"
 }
@@ -99,6 +109,21 @@ health_checks() {
   assert_success
   assert_output "/home/.claude-project-store"
 
+  # Verify the project-local store file for ~/.claude.json exists on the host --
+  # seeded from the developer's host file, or created empty if none existed.
+  run bash -c "test -f '${TESTDIR}/.ddev/claude-code/.claude.json'"
+  assert_success
+
+  # Verify ~/.claude.json exists in the container and is a symlink to the
+  # persistent, bind-mounted store file -- not just a fresh, ephemeral file that
+  # would lose its OAuth account/session identity on every restart.
+  run ddev exec "test -f ~/.claude.json"
+  assert_success
+
+  run ddev exec "readlink ~/.claude.json"
+  assert_success
+  assert_output "/home/.claude-project-store.json"
+
 }
 
 seed_mirror_checks() {
@@ -139,6 +164,23 @@ seed_mirror_checks() {
   assert_success
 
   rm -f "${TEST_HOST_CLAUDE_COMMAND}.late"
+
+  # Verify an in-container edit to ~/.claude.json survives a restart -- the same
+  # live-mount guarantee as ~/.claude itself, and the whole point of also
+  # persisting this file: Claude Code's machine/session identity lives here, not
+  # just in ~/.claude/.credentials.json.
+  run ddev exec "printf '{\"ddev_assistant_claude_test\":\"%s\"}' '${TEST_MARKER}' > ~/.claude.json"
+  assert_success
+
+  run ddev restart -y
+  assert_success
+
+  run ddev exec "grep -F '${TEST_MARKER}' ~/.claude.json"
+  assert_success
+
+  # And that survival is because it's on the host, not just container reuse.
+  run bash -c "grep -F '${TEST_MARKER}' '${TESTDIR}/.ddev/claude-code/.claude.json'"
+  assert_success
 }
 
 teardown() {
@@ -147,6 +189,9 @@ teardown() {
   rm -f "${TEST_HOST_CLAUDE_COMMAND}" "${TEST_HOST_CLAUDE_COMMAND}.late"
   if [ "${TEST_CREATED_CLAUDE_CREDENTIALS}" = true ]; then
     rm -f "${TEST_HOST_CLAUDE_CREDENTIALS}"
+  fi
+  if [ "${TEST_CREATED_CLAUDE_JSON}" = true ]; then
+    rm -f "${TEST_HOST_CLAUDE_JSON}"
   fi
   # Persist TESTDIR if running inside GitHub Actions. Useful for uploading test result artifacts
   # See example at https://github.com/ddev/github-action-add-on-test#preserving-artifacts

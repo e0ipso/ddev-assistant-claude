@@ -1,11 +1,13 @@
 #ddev-generated
 hooks:
   pre-start:
-    # Seed the project-local persistent store from the developer's global ~/.claude,
-    # but only the first time (if the store doesn't exist yet). After that, the
-    # store is fully independent of the host's ~/.claude: nothing written inside the
-    # container is ever overwritten from the host side on a later start, and the
-    # container never touches the host's real ~/.claude again.
+    # Seed the project-local persistent store from the developer's global ~/.claude
+    # (and its sibling ~/.claude.json, which holds OAuth account/session identity --
+    # see docker-compose.assistant-claude.yaml), but only the first time (if the
+    # store doesn't exist yet). After that, the store is fully independent of the
+    # host's ~/.claude: nothing written inside the container is ever overwritten
+    # from the host side on a later start, and the container never touches the
+    # host's real ~/.claude again.
     - exec-host: |
         set -eu
         store="$DDEV_APPROOT/.ddev/claude-code/.claude"
@@ -15,11 +17,24 @@ hooks:
             cp -R -P "${HOME}/.claude/." "${store}/"
           fi
         fi
+        # Docker requires a bind-mounted file to exist on the host before the
+        # container starts, or it silently creates a directory at the mount target
+        # instead. Falling back to an empty JSON object guarantees the file is
+        # always there, even for developers with no host ~/.claude.json yet.
+        store_json="$DDEV_APPROOT/.ddev/claude-code/.claude.json"
+        if [ ! -e "${store_json}" ]; then
+          if [ -f "${HOME}/.claude.json" ]; then
+            cp -P "${HOME}/.claude.json" "${store_json}"
+          else
+            printf '{}' >"${store_json}"
+          fi
+        fi
   post-start:
-    # Point $HOME/.claude at the persistent, bind-mounted project store. Must run
-    # inside the container (exec, not exec-host) so $HOME resolves to the
-    # container's home, not the host's -- see docker-compose.assistant-claude.yaml
-    # for why the mount itself uses a fixed path instead of $HOME.
+    # Point $HOME/.claude and $HOME/.claude.json at the persistent, bind-mounted
+    # project store. Must run inside the container (exec, not exec-host) so $HOME
+    # resolves to the container's home, not the host's -- see
+    # docker-compose.assistant-claude.yaml for why the mounts themselves use fixed
+    # paths instead of $HOME.
     - exec: |
         set -eu
         store="/home/.claude-project-store"
@@ -32,6 +47,16 @@ hooks:
         fi
         chmod 700 "${store}"
         [ ! -f "${store}/.credentials.json" ] || chmod 600 "${store}/.credentials.json"
+
+        store_json="/home/.claude-project-store.json"
+        target_json="${HOME}/.claude.json"
+        sudo touch "${store_json}"
+        sudo chown "$(id -u):$(id -g)" "${store_json}"
+        if [ ! -L "${target_json}" ] || [ "$(readlink "${target_json}")" != "${store_json}" ]; then
+          rm -rf "${target_json}"
+          ln -s "${store_json}" "${target_json}"
+        fi
+        chmod 600 "${store_json}"
 
 webimage_extra_packages:
   - bubblewrap
