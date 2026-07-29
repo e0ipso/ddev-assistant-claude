@@ -7,9 +7,9 @@
 
 ## Overview
 
-This DDEV add-on installs [Claude Code](https://claude.ai/code) inside the DDEV web container and automatically shares your host Claude configuration — including `CLAUDE.md`, `settings.json`, skills, hooks, and commands — with no additional setup required.
+This DDEV add-on installs [Claude Code](https://claude.ai/code) inside the DDEV web container and gives it a persistent, project-scoped configuration — seeded once from your host Claude configuration (`CLAUDE.md`, `settings.json`, skills, hooks, commands, credentials), then fully independent of the host afterward.
 
-Once installed, running `claude` inside `ddev ssh` or `ddev exec` uses a writable copy of your host global configuration.
+Once installed, running `claude` inside `ddev ssh` or `ddev exec` uses a writable, project-local `~/.claude` that survives `ddev restart` and `ddev poweroff` — conversation history, sessions, and any in-container changes persist just like they would on a host install.
 
 ## Requirements
 
@@ -23,19 +23,23 @@ ddev add-on get e0ipso/ddev-assistant-claude
 ddev restart
 ```
 
-After installation, commit the `.ddev` directory to version control.
+After installation, commit the `.ddev` directory to version control. `ddev add-on get` automatically adds `/.ddev/claude-code/` to your `.gitignore` — **do not remove that entry**, it holds live per-developer credentials (see [Security](#security)).
 
 ## What it does
 
 - **Installs Claude Code** into the container at `/usr/local/bin/claude`, on `$PATH` for every shell
-- **Seeds host configuration** on start: your host `~/.claude/` tree is mounted read-only under `~/.cred-seed/claude/`, then mirrored into the writable container `~/.claude/` directory on every restart:
-  - `~/.claude/CLAUDE.md` — project and global instructions
-  - `~/.claude/settings.json` — Claude Code settings
-  - `~/.claude/skills/` — custom skills
-  - `~/.claude/hooks/` — event hooks
-  - `~/.claude/commands/` — custom slash commands
-- **Mirrors host authentication** on restart: `~/.claude/.credentials.json` is part of the same seeded tree, so credentials and config are refreshed from the host whenever the container starts
+- **Seeds host configuration once**: the first time the add-on starts with no existing project store, your host `~/.claude/` tree (CLAUDE.md, settings.json, skills, hooks, commands, credentials) is copied into a project-local, persistent store at `.ddev/claude-code/.claude/` on the host
+- **Persists across restarts**: that project-local store is bind-mounted read-write into the container and symlinked to `~/.claude`, so conversation history, sessions, and any other in-container changes are written straight to host disk and survive `ddev restart`/`ddev poweroff` — nothing is copied-and-discarded on every start
+- **Never touches your real host `~/.claude` again** after the initial seed — the project store is independent per-project, so containers can't drift the config you use natively on the host, and one project's Claude state never leaks into another's
 - **Available everywhere** — `claude` is on `$PATH` for both interactive shells (`ddev ssh`) and non-interactive commands (`ddev exec`)
+
+## Security
+
+`.ddev/claude-code/.claude/` contains live OAuth credentials (`.credentials.json`) once seeded. Installation adds a `/.ddev/claude-code/` entry to your project's `.gitignore` automatically; if you're upgrading from an older version of this add-on, add it yourself before committing:
+
+```gitignore
+/.ddev/claude-code/
+```
 
 ## Usage
 
@@ -54,8 +58,8 @@ ddev exec claude --version
 
 | | This add-on | FreelyGive/ddev-claude-code |
 |---|---|---|
-| **Config approach** | Seeds a writable container `~/.claude/` from your host config on restart — zero setup if you already use Claude on the host | Stores config per-project in `.ddev/claude-code/` via symlinks; requires interactive setup on first run |
-| **Security** | The host seed is read-only, so the container cannot modify host config | Symlinks allow the container to write to config files |
+| **Config approach** | Seeds a persistent, project-scoped `.ddev/claude-code/` store from your host config once, automatically — zero setup if you already use Claude on the host | Stores config per-project in `.ddev/claude-code/` via symlinks; requires interactive setup on first run |
+| **Security / isolation** | After the initial seed, the container never touches your real host `~/.claude` again — each project's Claude state is independent, so containers can't drift your host config or leak between projects | Symlinks into a project-local store; similar isolation once set up |
 | **Install method** | Official Anthropic installer (`claude.ai/install.sh`) | `npm install -g @anthropic-ai/claude-code` |
 | **Install location** | Standalone binary at `/usr/local/bin/claude`, on `$PATH` for every shell, no per-start hooks | npm global install runs as root during Docker build |
 | **Mount safety** | Pre-start hook ensures the host config directory exists before Docker mounts it | No equivalent safeguard |

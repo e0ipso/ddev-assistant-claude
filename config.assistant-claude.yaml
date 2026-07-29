@@ -1,24 +1,37 @@
 #ddev-generated
 hooks:
   pre-start:
-    # Ensure host-side Claude Code config exists before Docker bind-mounts it.
-    - exec-host: "mkdir -p ~/.claude"
+    # Seed the project-local persistent store from the developer's global ~/.claude,
+    # but only the first time (if the store doesn't exist yet). After that, the
+    # store is fully independent of the host's ~/.claude: nothing written inside the
+    # container is ever overwritten from the host side on a later start, and the
+    # container never touches the host's real ~/.claude again.
+    - exec-host: |
+        set -eu
+        store="$DDEV_APPROOT/.ddev/claude-code/.claude"
+        if [ ! -d "${store}" ]; then
+          mkdir -p "${store}"
+          if [ -d "${HOME}/.claude" ]; then
+            cp -R -P "${HOME}/.claude/." "${store}/"
+          fi
+        fi
   post-start:
-    # Mirror the read-only host seed into the writable runtime config directory on
-    # every start. Host config is authoritative, so stale container-only files are
-    # removed before copying.
+    # Point $HOME/.claude at the persistent, bind-mounted project store. Must run
+    # inside the container (exec, not exec-host) so $HOME resolves to the
+    # container's home, not the host's -- see docker-compose.assistant-claude.yaml
+    # for why the mount itself uses a fixed path instead of $HOME.
     - exec: |
         set -eu
-        seed_dir="${HOME}/.cred-seed/claude"
-        target_dir="${HOME}/.claude"
-        if [ -d "${seed_dir}" ]; then
-          sudo rm -rf "${target_dir}"
-          mkdir -p "${target_dir}"
-          cp -R -P "${seed_dir}/." "${target_dir}/"
-          sudo chown -R "$(id -u):$(id -g)" "${target_dir}"
-          chmod 700 "${target_dir}"
-          [ ! -f "${target_dir}/.credentials.json" ] || chmod 600 "${target_dir}/.credentials.json"
+        store="/home/.claude-project-store"
+        target="${HOME}/.claude"
+        sudo mkdir -p "${store}"
+        sudo chown -R "$(id -u):$(id -g)" "${store}"
+        if [ ! -L "${target}" ] || [ "$(readlink "${target}")" != "${store}" ]; then
+          rm -rf "${target}"
+          ln -s "${store}" "${target}"
         fi
+        chmod 700 "${store}"
+        [ ! -f "${store}/.credentials.json" ] || chmod 600 "${store}/.credentials.json"
 
 webimage_extra_packages:
   - bubblewrap

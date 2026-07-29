@@ -1,7 +1,17 @@
 #ddev-generated
-# Mount host Claude Code config read-only into the seed directory. The post-start
-# hook mirrors it into the writable ~/.claude runtime directory on every start.
+# Project-scoped, persistent Claude Code state, bind-mounted read-write. Because
+# it's a live mount rather than a copy, writes made inside the container land
+# directly in .ddev/claude-code/.claude on the host and survive
+# `ddev restart`/`ddev poweroff` -- nothing is ever discarded between starts.
+#
+# The mount target is a fixed path rather than "${HOME}/.claude": ${HOME} is
+# interpolated once, on the host, when docker-compose renders this file, so on
+# hosts where the host home path differs from the container's (e.g. macOS's
+# /Users/<user> vs. the container's /home/<user>) both sides of the mount would
+# resolve to the host-style path. The post-start hook (config.assistant-claude.yaml)
+# runs *inside* the container, where $HOME correctly resolves, and symlinks
+# $HOME/.claude to this fixed path instead of relying on it directly here.
 services:
   web:
     volumes:
-      - "${HOME}/.claude:${HOME}/.cred-seed/claude:ro"
+      - "${DDEV_APPROOT}/.ddev/claude-code/.claude:/home/.claude-project-store"
