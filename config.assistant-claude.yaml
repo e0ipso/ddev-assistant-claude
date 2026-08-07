@@ -1,24 +1,54 @@
 #ddev-generated
 hooks:
   pre-start:
-    # Ensure host-side Claude Code config exists before Docker bind-mounts it.
-    - exec-host: "mkdir -p ~/.claude"
+    # Seed the project-local store from ~/.claude and ~/.claude.json, but only
+    # the first time. After that it's independent of the host: nothing written
+    # in the container gets overwritten on a later start.
+    - exec-host: |
+        set -eu
+        store="$DDEV_APPROOT/.ddev/claude-code/.claude"
+        if [ ! -d "${store}" ]; then
+          mkdir -p "${store}"
+          if [ -d "${HOME}/.claude" ]; then
+            cp -R -L "${HOME}/.claude/." "${store}/"
+          fi
+        fi
+        # Docker auto-creates a directory at a missing bind-mount file path, so
+        # this must exist before start; fall back to an empty object.
+        store_json="$DDEV_APPROOT/.ddev/claude-code/.claude.json"
+        if [ ! -e "${store_json}" ]; then
+          if [ -f "${HOME}/.claude.json" ]; then
+            cp -P "${HOME}/.claude.json" "${store_json}"
+          else
+            printf '{}' >"${store_json}"
+          fi
+        fi
   post-start:
-    # Mirror the read-only host seed into the writable runtime config directory on
-    # every start. Host config is authoritative, so stale container-only files are
-    # removed before copying.
+    # Symlink $HOME/.claude and $HOME/.claude.json to the bind-mounted store.
+    # Must run in-container (exec, not exec-host) so $HOME resolves to the
+    # container's home, not the host's.
     - exec: |
         set -eu
-        seed_dir="${HOME}/.cred-seed/claude"
-        target_dir="${HOME}/.claude"
-        if [ -d "${seed_dir}" ]; then
-          sudo rm -rf "${target_dir}"
-          mkdir -p "${target_dir}"
-          cp -R -P "${seed_dir}/." "${target_dir}/"
-          sudo chown -R "$(id -u):$(id -g)" "${target_dir}"
-          chmod 700 "${target_dir}"
-          [ ! -f "${target_dir}/.credentials.json" ] || chmod 600 "${target_dir}/.credentials.json"
+        store="/home/.claude-project-store"
+        target="${HOME}/.claude"
+        sudo mkdir -p "${store}"
+        sudo chown -R "$(id -u):$(id -g)" "${store}"
+        if [ ! -L "${target}" ] || [ "$(readlink "${target}")" != "${store}" ]; then
+          rm -rf "${target}"
+          ln -s "${store}" "${target}"
         fi
+        chmod 700 "${store}"
+        [ ! -f "${store}/.credentials.json" ] || chmod 600 "${store}/.credentials.json"
+
+        store_json="/home/.claude-project-store.json"
+        target_json="${HOME}/.claude.json"
+        sudo touch "${store_json}"
+        sudo chown "$(id -u):$(id -g)" "${store_json}"
+        if [ ! -L "${target_json}" ] || [ "$(readlink "${target_json}")" != "${store_json}" ]; then
+          rm -rf "${target_json}"
+          ln -s "${store_json}" "${target_json}"
+        fi
+        chmod 600 "${store_json}"
 
 webimage_extra_packages:
   - bubblewrap

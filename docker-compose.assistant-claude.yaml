@@ -1,7 +1,18 @@
 #ddev-generated
-# Mount host Claude Code config read-only into the seed directory. The post-start
-# hook mirrors it into the writable ~/.claude runtime directory on every start.
+# Project-scoped, persistent Claude Code state, bind-mounted read-write so
+# container writes land on the host and survive `ddev restart`/`ddev poweroff`.
+#
+# Claude Code keeps state in two places: ~/.claude/ (history, sessions,
+# credentials) and a sibling ~/.claude.json (machine/session identity, project
+# trust state). Both are mounted -- skipping ~/.claude.json means a fresh
+# machine identity every restart even though credentials persist.
+#
+# Mount targets are fixed paths rather than "${HOME}/.claude": $HOME is
+# interpolated on the host at compose-render time and can differ from the
+# container's $HOME (e.g. macOS). The post-start hook symlinks $HOME/.claude
+# and $HOME/.claude.json to these paths from inside the container instead.
 services:
   web:
     volumes:
-      - "${HOME}/.claude:${HOME}/.cred-seed/claude:ro"
+      - "${DDEV_APPROOT}/.ddev/claude-code/.claude:/home/.claude-project-store"
+      - "${DDEV_APPROOT}/.ddev/claude-code/.claude.json:/home/.claude-project-store.json"

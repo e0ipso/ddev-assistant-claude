@@ -6,6 +6,11 @@ project_files:
   - docker-compose.assistant-claude.yaml
 
 post_install_actions:
+  - |
+    if ! grep -qxF '/.ddev/claude-code/' .gitignore 2>/dev/null; then
+      printf '\n# Per-developer Claude Code state (OAuth credentials, history) -- never commit.\n/.ddev/claude-code/\n' >> .gitignore
+      echo "Added /.ddev/claude-code/ to .gitignore (it holds live credentials)."
+    fi
   - echo "Please run 'ddev restart' to build the new configuration."
 
 ddev_version_constraint: '>= v1.24.0'

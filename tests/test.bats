@@ -31,6 +31,8 @@ setup() {
   export TEST_HOST_CLAUDE_COMMAND="${HOME}/.claude/commands/${TEST_MARKER}.md"
   export TEST_HOST_CLAUDE_CREDENTIALS="${HOME}/.claude/.credentials.json"
   export TEST_CREATED_CLAUDE_CREDENTIALS=false
+  export TEST_HOST_CLAUDE_JSON="${HOME}/.claude.json"
+  export TEST_CREATED_CLAUDE_JSON=false
   export DDEV_NONINTERACTIVE=true
   export DDEV_NO_INSTRUMENTATION=true
   ddev delete -Oy "${PROJNAME}" >/dev/null 2>&1 || true
@@ -49,8 +51,16 @@ prepare_host_claude_credentials() {
   fi
 }
 
+prepare_host_claude_json() {
+  if [ ! -e "${TEST_HOST_CLAUDE_JSON}" ]; then
+    printf '{"ddev_assistant_claude_test":"%s"}\n' "${TEST_MARKER}" >"${TEST_HOST_CLAUDE_JSON}"
+    export TEST_CREATED_CLAUDE_JSON=true
+  fi
+}
+
 prepare_host_claude_config() {
   prepare_host_claude_credentials
+  prepare_host_claude_json
   mkdir -p "${HOME}/.claude/commands"
   printf 'seeded command from %s\n' "${TEST_MARKER}" >"${TEST_HOST_CLAUDE_COMMAND}"
 }
@@ -85,45 +95,99 @@ health_checks() {
   run ddev exec "test -d ~/.claude && test -w ~/.claude"
   assert_success
 
-  # Verify host credentials are mounted read-only under ~/.cred-seed/
-  run ddev exec "test -f ~/.cred-seed/claude/.credentials.json"
+  # Verify the project-local persistent store exists on the host and credentials
+  # were seeded into it.
+  run bash -c "test -f '${TESTDIR}/.ddev/claude-code/.claude/.credentials.json'"
   assert_success
 
   # Verify credentials are seeded into the writable runtime path on start
   run ddev exec "test -f ~/.claude/.credentials.json"
   assert_success
 
+  # Verify ~/.claude is a symlink to the persistent, bind-mounted store
+  run ddev exec "readlink ~/.claude"
+  assert_success
+  assert_output "/home/.claude-project-store"
+
+  # Verify the project-local store file for ~/.claude.json exists on the host --
+  # seeded from the developer's host file, or created empty if none existed.
+  run bash -c "test -f '${TESTDIR}/.ddev/claude-code/.claude.json'"
+  assert_success
+
+  # Verify ~/.claude.json is a symlink to the persistent, bind-mounted store
+  run ddev exec "test -f ~/.claude.json"
+  assert_success
+
+  run ddev exec "readlink ~/.claude.json"
+  assert_success
+  assert_output "/home/.claude-project-store.json"
+
 }
 
 seed_mirror_checks() {
-  # Verify host config is mounted only in the seed area and copied into the
-  # writable runtime path.
-  run ddev exec "test -f ~/.cred-seed/claude/commands/${TEST_MARKER}.md"
+  # Verify host config was seeded once into the project-local store and is
+  # visible through the writable runtime path.
+  run bash -c "test -f '${TESTDIR}/.ddev/claude-code/.claude/commands/${TEST_MARKER}.md'"
   assert_success
 
   run ddev exec "test -f ~/.claude/commands/${TEST_MARKER}.md"
   assert_success
 
-  run ddev exec "grep -F 'seeded command from ${TEST_MARKER}' ~/.cred-seed/claude/commands/${TEST_MARKER}.md"
+  run ddev exec "grep -F 'seeded command from ${TEST_MARKER}' ~/.claude/commands/${TEST_MARKER}.md"
   assert_success
 
-  # Verify restart-time mirroring deletes container-only files.
+  # Verify container-only files SURVIVE a restart -- the persistent store is a
+  # live bind mount, not a copy that gets overwritten on every start.
   run ddev exec "mkdir -p ~/.claude/commands && touch ~/.claude/commands/container-only-${TEST_MARKER}.md"
   assert_success
 
   run ddev restart -y
   assert_success
 
-  run ddev exec "test ! -e ~/.claude/commands/container-only-${TEST_MARKER}.md"
+  run ddev exec "test -e ~/.claude/commands/container-only-${TEST_MARKER}.md"
+  assert_success
+
+  # And that survival is because it's on the host, not just container reuse.
+  run bash -c "test -f '${TESTDIR}/.ddev/claude-code/.claude/commands/container-only-${TEST_MARKER}.md'"
+  assert_success
+
+  # Verify a later host ~/.claude change is NOT re-seeded once the project store exists.
+  run bash -c "echo 'should not appear' > '${TEST_HOST_CLAUDE_COMMAND}.late'"
+  assert_success
+
+  run ddev restart -y
+  assert_success
+
+  run ddev exec "test ! -e ~/.claude/commands/$(basename "${TEST_HOST_CLAUDE_COMMAND}").late"
+  assert_success
+
+  rm -f "${TEST_HOST_CLAUDE_COMMAND}.late"
+
+  # Verify an in-container edit to ~/.claude.json survives a restart, same as
+  # ~/.claude/ itself.
+  run ddev exec "printf '{\"ddev_assistant_claude_test\":\"%s\"}' '${TEST_MARKER}' > ~/.claude.json"
+  assert_success
+
+  run ddev restart -y
+  assert_success
+
+  run ddev exec "grep -F '${TEST_MARKER}' ~/.claude.json"
+  assert_success
+
+  # And that survival is because it's on the host, not just container reuse.
+  run bash -c "grep -F '${TEST_MARKER}' '${TESTDIR}/.ddev/claude-code/.claude.json'"
   assert_success
 }
 
 teardown() {
   set -eu -o pipefail
   ddev delete -Oy "${PROJNAME}" >/dev/null 2>&1
-  rm -f "${TEST_HOST_CLAUDE_COMMAND}"
+  rm -f "${TEST_HOST_CLAUDE_COMMAND}" "${TEST_HOST_CLAUDE_COMMAND}.late"
   if [ "${TEST_CREATED_CLAUDE_CREDENTIALS}" = true ]; then
     rm -f "${TEST_HOST_CLAUDE_CREDENTIALS}"
+  fi
+  if [ "${TEST_CREATED_CLAUDE_JSON}" = true ]; then
+    rm -f "${TEST_HOST_CLAUDE_JSON}"
   fi
   # Persist TESTDIR if running inside GitHub Actions. Useful for uploading test result artifacts
   # See example at https://github.com/ddev/github-action-add-on-test#preserving-artifacts
