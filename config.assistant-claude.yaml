@@ -10,7 +10,7 @@ hooks:
         if [ ! -d "${store}" ]; then
           mkdir -p "${store}"
           if [ -d "${HOME}/.claude" ]; then
-            cp -R -P "${HOME}/.claude/." "${store}/"
+            cp -R -L "${HOME}/.claude/." "${store}/"
           fi
         fi
         # Docker auto-creates a directory at a missing bind-mount file path, so
