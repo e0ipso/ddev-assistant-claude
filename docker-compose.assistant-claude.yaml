@@ -1,7 +1,14 @@
 #ddev-generated
 # Mount host Claude Code config read-only into the seed directory. The post-start
 # hook mirrors it into the writable ~/.claude runtime directory on every start.
+#
+# The container-side target is a fixed absolute path, NOT `${HOME}`. Docker
+# Compose interpolates `${HOME}` from the host environment on both sides of a
+# volume mapping, and the host home directory does not match the container's on
+# every platform: macOS hosts use `/Users/<user>` while the web container always
+# uses `/home/<user>`. Using `${HOME}` as the target would mount the seed where
+# the post-start hook never looks, silently skipping the mirror.
 services:
   web:
     volumes:
-      - "${HOME}/.claude:${HOME}/.cred-seed/claude:ro"
+      - "${HOME}/.claude:/mnt/ddev-assistant-claude-seed:ro"
