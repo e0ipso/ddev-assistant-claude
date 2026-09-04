@@ -85,8 +85,15 @@ health_checks() {
   run ddev exec "test -d ~/.claude && test -w ~/.claude"
   assert_success
 
-  # Verify host credentials are mounted read-only under ~/.cred-seed/
-  run ddev exec "test -f ~/.cred-seed/claude/.credentials.json"
+  # Verify host credentials are mounted read-only under the seed mount point.
+  run ddev exec "test -f /mnt/ddev-assistant-claude-seed/.credentials.json"
+  assert_success
+
+  # The seed must live on a fixed container path, never one derived from the
+  # host's ${HOME}: on macOS the host home (/Users/<user>) differs from the
+  # container home (/home/<user>), so a ${HOME}-based mount target lands the
+  # seed where the post-start hook never looks and the mirror silently skips.
+  run ddev exec "test ! -e ~/.cred-seed"
   assert_success
 
   # Verify credentials are seeded into the writable runtime path on start
@@ -98,13 +105,13 @@ health_checks() {
 seed_mirror_checks() {
   # Verify host config is mounted only in the seed area and copied into the
   # writable runtime path.
-  run ddev exec "test -f ~/.cred-seed/claude/commands/${TEST_MARKER}.md"
+  run ddev exec "test -f /mnt/ddev-assistant-claude-seed/commands/${TEST_MARKER}.md"
   assert_success
 
   run ddev exec "test -f ~/.claude/commands/${TEST_MARKER}.md"
   assert_success
 
-  run ddev exec "grep -F 'seeded command from ${TEST_MARKER}' ~/.cred-seed/claude/commands/${TEST_MARKER}.md"
+  run ddev exec "grep -F 'seeded command from ${TEST_MARKER}' /mnt/ddev-assistant-claude-seed/commands/${TEST_MARKER}.md"
   assert_success
 
   # Verify restart-time mirroring deletes container-only files.
