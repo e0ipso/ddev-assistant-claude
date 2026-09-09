@@ -28,7 +28,7 @@ After installation, commit the `.ddev` directory to version control.
 ## What it does
 
 - **Installs Claude Code** into the container at `/usr/local/bin/claude`, on `$PATH` for every shell
-- **Seeds host configuration** on start: your host `~/.claude/` tree is mounted read-only under `~/.cred-seed/claude/`, then mirrored into the writable container `~/.claude/` directory on every restart:
+- **Seeds host configuration** on start: your host `~/.claude/` tree is mounted read-only at `/mnt/ddev-assistant-claude-seed/`, then mirrored into the writable container `~/.claude/` directory on every restart:
   - `~/.claude/CLAUDE.md` — project and global instructions
   - `~/.claude/settings.json` — Claude Code settings
   - `~/.claude/skills/` — custom skills
