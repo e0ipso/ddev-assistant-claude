@@ -7,7 +7,7 @@ This directory holds the project's AI-session-derived knowledge base. It is buil
 The generated hook scripts are ignored by Git. Before starting an agent session in a fresh checkout, recreate them with the version recorded in `.state/installed-version`:
 
 ```bash
-npx kenkeep@1.18.0 init --harnesses claude,codex,cursor
+npx kenkeep@1.18.0 init --upgrade --harnesses claude,codex,cursor
 ```
 
 Run `npm ci` from the repository root to install the commit checks and activate Husky.
