@@ -3,6 +3,10 @@
   "version": "0.0.0-development",
   "private": true,
   "description": "DDEV add-on that integrates Claude Code into DDEV development environments",
+  "scripts": {
+    "commitlint": "commitlint --edit",
+    "prepare": "husky"
+  },
   "release": {
     "branches": ["main"],
     "plugins": [
@@ -12,10 +16,12 @@
     ]
   },
   "devDependencies": {
-    "semantic-release": "^24.0.0",
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
     "@semantic-release/commit-analyzer": "^13.0.0",
+    "@semantic-release/github": "^10.0.0",
     "@semantic-release/release-notes-generator": "^14.0.0",
-    "@semantic-release/github": "^10.0.0"
+    "husky": "^9.1.7",
+    "semantic-release": "^24.0.0"
   }
 }
-
