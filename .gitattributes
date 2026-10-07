@@ -4,3 +4,12 @@ tests/ export-ignore
 .gitattributes export-ignore
 package.json export-ignore
 package-lock.json export-ignore
+.husky/ export-ignore
+commitlint.config.cjs export-ignore
+.agents/ export-ignore
+.ai/ export-ignore
+.claude/ export-ignore
+.codex/ export-ignore
+.cursor/ export-ignore
+.kkignore export-ignore
+skills-lock.json export-ignore

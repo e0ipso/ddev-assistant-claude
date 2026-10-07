@@ -1,2 +1,5 @@
 test_env/
 node_modules/
+.env
+/review.xml
+/review.guide.xml

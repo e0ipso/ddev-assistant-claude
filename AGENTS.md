@@ -50,3 +50,9 @@ The `install from release` test (tagged `@release`) installs from GitHub release
 - Commits use conventional commit format (e.g., `feat:`, `fix:`)
 - CI runs on PRs, pushes to main, and daily at 08:25 UTC
 - `.gitattributes` excludes tests, `.github/`, and docs from release archives
+
+<!-- >>> kenkeep:kk-index >>> -->
+You are required to load [.ai/kenkeep/ENTRY.md](.ai/kenkeep/ENTRY.md), the small curated entry catalog for this repo. Enter there and descend using progressive disclosure principles.
+
+
+<!-- <<< kenkeep:kk-index <<< -->
