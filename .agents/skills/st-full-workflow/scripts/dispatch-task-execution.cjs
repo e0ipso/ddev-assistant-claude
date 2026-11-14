@@ -35,7 +35,8 @@ __export(dispatch_task_execution_exports, {
 });
 module.exports = __toCommonJS(dispatch_task_execution_exports);
 var fs5 = __toESM(require("fs"));
-var path6 = __toESM(require("path"));
+var import_crypto3 = require("crypto");
+var path8 = __toESM(require("path"));
 
 // src/types.ts
 var SUPPORTED_HARNESSES = [
@@ -54,19 +55,17 @@ var executionTargetId = (target) => JSON.stringify([target.model, target.harness
 var runSelector = (scriptPath, input, timeoutMs) => {
   try {
     const nodeScript = /\.(?:cjs|mjs|js)$/.test(scriptPath);
-    const stdout = nodeScript ? (0, import_child_process.execFileSync)(process.execPath, [scriptPath], {
-      input,
-      encoding: "utf8",
-      timeout: timeoutMs,
-      maxBuffer: 1024 * 1024,
-      stdio: ["pipe", "pipe", "pipe"]
-    }) : (0, import_child_process.execFileSync)(scriptPath, [], {
-      input,
-      encoding: "utf8",
-      timeout: timeoutMs,
-      maxBuffer: 1024 * 1024,
-      stdio: ["pipe", "pipe", "pipe"]
-    });
+    const stdout = (0, import_child_process.execFileSync)(
+      nodeScript ? process.execPath : scriptPath,
+      nodeScript ? [scriptPath] : [],
+      {
+        input,
+        encoding: "utf8",
+        timeout: timeoutMs,
+        maxBuffer: 1024 * 1024,
+        stdio: ["pipe", "pipe", "pipe"]
+      }
+    );
     return { ok: true, stdout };
   } catch {
     return { ok: false };
@@ -152,14 +151,153 @@ var selectDispatchTarget = (config, profileName, avoidedIds, options) => {
 };
 
 // src/skill-scripts/shared/external-dispatch.ts
+var path3 = __toESM(require("path"));
+var import_child_process2 = require("child_process");
+
+// src/skill-scripts/shared/executable-resolution.ts
 var fs = __toESM(require("fs"));
 var path2 = __toESM(require("path"));
-var import_child_process2 = require("child_process");
+var DEFAULT_PATHEXT = ".EXE;.CMD;.BAT;.COM";
+var hasPathSeparator = (executable) => /[\\/]/.test(executable);
+var resolveExecutablePath = (executable, environment = {}) => {
+  const env = environment.env ?? process.env;
+  const platform = environment.platform ?? process.platform;
+  const win32 = platform === "win32";
+  const suffixes = win32 ? ["", ...(env.PATHEXT ?? DEFAULT_PATHEXT).split(";").filter(Boolean)] : [""];
+  const directories = hasPathSeparator(executable) ? [""] : (env.PATH ?? "").split(path2.delimiter).filter(Boolean);
+  const mode = win32 ? fs.constants.F_OK : fs.constants.X_OK;
+  for (const directory of directories) {
+    for (const suffix of suffixes) {
+      const candidate = path2.resolve(directory, `${executable}${suffix}`);
+      try {
+        fs.accessSync(candidate, mode);
+        if (fs.statSync(candidate).isFile()) return fs.realpathSync(candidate);
+      } catch {
+      }
+    }
+  }
+  return null;
+};
+var executableResolves = (executable, environment) => resolveExecutablePath(executable, environment) !== null;
+
+// src/skill-scripts/shared/review-session-policy.ts
+var REVIEW_SESSION_POLICY_VERSION = 1;
+var REVIEW_SESSION_POLICIES = Object.freeze({
+  // `claude -p` starts a new session. `-c -p` and `-r <id>` continue one.
+  claude: {
+    freshSessionArgv: [],
+    rejectedFlags: [
+      "--continue",
+      "-c",
+      "--resume",
+      "-r",
+      "--session-id",
+      "--fork-session",
+      "--from-pr",
+      "--teleport",
+      // With a session ID or URL, `--cloud` queues into an existing session.
+      // `--remote` is its deprecated alias, including that form.
+      "--cloud",
+      "--remote"
+    ],
+    rejectedSubcommands: [],
+    sessionEnvironment: [
+      "CLAUDECODE",
+      "CLAUDE_CODE_CHILD_SESSION",
+      "CLAUDE_CODE_SESSION_ID",
+      "CLAUDE_CODE_BRIDGE_SESSION_ID",
+      "CLAUDE_CODE_REMOTE_SESSION_ID",
+      "CLAUDE_CODE_MESSAGING_SOCKET",
+      "CLAUDE_CODE_MESSAGING_TOKEN",
+      "CLAUDE_CODE_SESSION_ATTENDED",
+      "CLAUDE_CODE_ENTRYPOINT",
+      "CLAUDE_PID"
+    ]
+  },
+  // `codex exec` starts a new session. `exec resume` and `exec fork` reuse one.
+  codex: {
+    freshSessionArgv: [],
+    rejectedFlags: [],
+    rejectedSubcommands: ["resume", "fork"],
+    sessionEnvironment: ["CODEX_THREAD_ID"]
+  },
+  // `cursor-agent --print` starts a new chat. `--continue` is `--resume=-1`.
+  cursor: {
+    freshSessionArgv: [],
+    rejectedFlags: ["--resume", "--continue"],
+    rejectedSubcommands: ["resume", "ls", "persist"],
+    sessionEnvironment: [
+      "CURSOR_CONVERSATION_ID",
+      "CURSOR_REQUEST_ID",
+      "CURSOR_AGENT_STORE_FILES_DIR",
+      "CURSOR_AGENT_STORE_SHARED_PATHS",
+      "CURSOR_AGENT_CHAT_ID"
+    ]
+  },
+  // `gemini --prompt` starts a new session. The list and delete flags act on
+  // stored sessions and exit, so no review runs.
+  gemini: {
+    freshSessionArgv: [],
+    rejectedFlags: ["--resume", "-r", "--list-sessions", "--delete-session"],
+    rejectedSubcommands: [],
+    sessionEnvironment: ["GEMINI_CLI_IN_SHELL", "GEMINI_CLI_NESTED_SESSION"]
+  },
+  // `copilot -p` starts a new session. `--session-id` resumes a matching one.
+  copilot: {
+    freshSessionArgv: [],
+    rejectedFlags: ["--resume", "-r", "--continue", "--session-id", "--connect"],
+    rejectedSubcommands: [],
+    sessionEnvironment: []
+  },
+  // `opencode run` starts a new session. `--attach` (v1) connects the run to
+  // a running server that can hold the implementer's session.
+  opencode: {
+    freshSessionArgv: [],
+    rejectedFlags: ["--continue", "-c", "--session", "-s", "--fork", "--attach"],
+    rejectedSubcommands: [],
+    sessionEnvironment: ["OPENCODE_SESSION_ID"]
+  }
+});
+var policyKeys = Object.keys(REVIEW_SESSION_POLICIES).sort();
+var harnessKeys = [...SUPPORTED_HARNESSES].sort();
+if (policyKeys.join("\0") !== harnessKeys.join("\0")) {
+  throw new Error("Review session policy registry does not cover SUPPORTED_HARNESSES exactly.");
+}
+var REVIEW_SESSION_ENVIRONMENT = new Set(
+  SUPPORTED_HARNESSES.flatMap((harness) => REVIEW_SESSION_POLICIES[harness].sessionEnvironment)
+);
+var shortOptionGroup = (element) => element.startsWith("-") && !element.startsWith("--") ? element.slice(1).split("=")[0] : "";
+var matchesFlag = (element, flag) => element === flag || (flag.startsWith("--") ? element.startsWith(`${flag}=`) : shortOptionGroup(element).includes(flag.slice(1)));
+var reusesSession = (policy, element) => policy.rejectedSubcommands.includes(element) || policy.rejectedFlags.some((flag) => matchesFlag(element, flag));
+var validateReviewCliArgs = (harness, cliArgs) => {
+  if (!Object.prototype.hasOwnProperty.call(REVIEW_SESSION_POLICIES, harness)) {
+    return {
+      ok: false,
+      detail: `No clean review session policy is registered for ${harness}.`
+    };
+  }
+  const policy = REVIEW_SESSION_POLICIES[harness];
+  const index = cliArgs.findIndex((element) => reusesSession(policy, element));
+  if (index === -1) return { ok: true };
+  return {
+    ok: false,
+    detail: `${harness} cannot start a clean review session. config.yaml harnesses.${harness}.cli_args[${index}] is "${cliArgs[index]}". This argument can make ${harness} use an existing session instead of a new one. Strikethroo does not remove configured arguments silently. Remove it to get a clean review session.`
+  };
+};
+var buildReviewEnvironment = (parent = process.env) => {
+  const environment = {};
+  for (const [name, value] of Object.entries(parent)) {
+    if (!REVIEW_SESSION_ENVIRONMENT.has(name)) environment[name] = value;
+  }
+  return environment;
+};
+
+// src/skill-scripts/shared/external-dispatch.ts
 var taskPrompt = (request) => `Strikethroo external task dispatch \u2014 Plan ${request.planId}, Task ${request.taskId}.
 Workspace: ${request.workspace}
 Task file: ${request.taskFile}
 You are a delegated execution worker. Do not run check-for-updates.cjs or emit update notices.
-Before implementation, read and execute ${path2.join(
+Before implementation, read and execute ${path3.join(
   request.workspace,
   ".ai/strikethroo/config/hooks/PRE_TASK_EXECUTION.md"
 )}. Halt if that hook fails.
@@ -167,83 +305,50 @@ Before implementation, read and execute ${path2.join(
 Read and implement this task. Preserve dependency validation, status transitions, evidence reporting, and error-hook handling. Report failures clearly.
 
 ${request.taskMarkdown}`;
-var command = (executable, argv, request) => ({
+var adapter = (executable, authenticationArgv, modeArgv, optionArgv) => ({
   executable,
-  argv,
-  cwd: request.workspace,
-  stdin: request.prompt
+  authenticationArgv: () => [...authenticationArgv],
+  buildCommand: (request) => ({
+    executable,
+    argv: [
+      ...modeArgv,
+      ...request.freshSessionArgv ?? [],
+      ...request.cliArgs,
+      ...optionArgv(request)
+    ],
+    cwd: request.workspace,
+    stdin: request.prompt
+  })
 });
 var modelArgv = (model) => model === void 0 ? [] : ["--model", model];
 var EXTERNAL_HARNESS_ADAPTERS = {
-  claude: {
-    executable: "claude",
-    buildCommand: (request) => command(
-      "claude",
-      [
-        "-p",
-        ...request.cliArgs,
-        ...modelArgv(request.model),
-        ...request.reasoningEffort === void 0 ? [] : ["--effort", request.reasoningEffort]
-      ],
-      request
-    ),
-    authenticationArgv: () => ["auth", "status"]
-  },
-  codex: {
-    executable: "codex",
-    buildCommand: (request) => command(
-      "codex",
-      [
-        "exec",
-        ...request.cliArgs,
-        ...modelArgv(request.model),
-        ...request.reasoningEffort === void 0 ? [] : ["--config", `model_reasoning_effort=${request.reasoningEffort}`],
-        "-"
-      ],
-      request
-    ),
-    authenticationArgv: () => ["login", "status"]
-  },
-  cursor: {
-    executable: "cursor-agent",
-    buildCommand: (request) => command(
-      "cursor-agent",
-      ["--print", ...request.cliArgs, ...modelArgv(request.model)],
-      request
-    ),
-    authenticationArgv: () => ["status"]
-  },
-  gemini: {
-    executable: "gemini",
-    // The empty positional prompt is the existing contract — content travels on
-    // stdin. It stays even when the model pair is dropped.
-    buildCommand: (request) => command("gemini", ["--prompt", "", ...request.cliArgs, ...modelArgv(request.model)], request),
-    authenticationArgv: () => ["auth", "status"]
-  },
-  copilot: {
-    executable: "copilot",
-    buildCommand: (request) => command("copilot", ["-p", "", ...request.cliArgs, ...modelArgv(request.model)], request),
-    authenticationArgv: () => ["auth", "status"]
-  },
-  opencode: {
-    executable: "opencode",
-    buildCommand: (request) => command(
-      "opencode",
-      [
-        "run",
-        ...request.cliArgs,
-        ...modelArgv(request.model),
-        ...request.reasoningEffort === void 0 ? [] : ["--variant", request.reasoningEffort],
-        "-"
-      ],
-      request
-    ),
-    authenticationArgv: () => ["auth", "list"]
-  }
+  claude: adapter("claude", ["auth", "status"], ["-p"], (request) => [
+    ...modelArgv(request.model),
+    ...request.reasoningEffort === void 0 ? [] : ["--effort", request.reasoningEffort]
+  ]),
+  codex: adapter("codex", ["login", "status"], ["exec"], (request) => [
+    ...modelArgv(request.model),
+    ...request.reasoningEffort === void 0 ? [] : ["--config", `model_reasoning_effort=${request.reasoningEffort}`],
+    "-"
+  ]),
+  cursor: adapter("cursor-agent", ["status"], ["--print"], (request) => modelArgv(request.model)),
+  // Gemini and Copilot require an empty prompt argument; content travels on stdin.
+  gemini: adapter(
+    "gemini",
+    ["auth", "status"],
+    ["--prompt", ""],
+    (request) => modelArgv(request.model)
+  ),
+  copilot: adapter("copilot", ["auth", "status"], ["-p", ""], (request) => modelArgv(request.model)),
+  opencode: adapter("opencode", ["auth", "list"], ["run"], (request) => [
+    ...modelArgv(request.model),
+    ...request.reasoningEffort === void 0 ? [] : ["--variant", request.reasoningEffort],
+    "-"
+  ])
 };
 var adapterKeys = Object.keys(EXTERNAL_HARNESS_ADAPTERS).sort();
-var harnessKeys = [...SUPPORTED_HARNESSES].sort();
-if (adapterKeys.join("\0") !== harnessKeys.join("\0")) {
+var harnessKeys2 = [...SUPPORTED_HARNESSES].sort();
+if (adapterKeys.join("\0") !== harnessKeys2.join("\0")) {
   throw new Error("External harness adapter registry does not cover SUPPORTED_HARNESSES exactly.");
 }
 var taskCommandRequest = (request) => ({
@@ -253,39 +358,53 @@ var taskCommandRequest = (request) => ({
   workspace: request.workspace,
   prompt: taskPrompt(request)
 });
-var executableOnPath = (executable) => (/[\\/]/.test(executable) ? [""] : (process.env.PATH ?? "").split(path2.delimiter)).some(
-  (directory) => {
-    if (!directory && !/[\\/]/.test(executable)) return false;
-    const candidate = directory === "" ? executable : path2.join(directory, executable);
-    try {
-      return fs.statSync(candidate).isFile();
-    } catch {
-      return false;
-    }
-  }
-);
-var CAPTURED_STDOUT_LIMIT = 262144;
-var STDIO_SLOTS = {
-  ignore: { stdout: "ignore" },
-  inherit: { stdout: "inherit" },
-  capture: { stdout: "pipe" }
-};
-var runProcess = (executable, argv, cwd, stdin, outputMode = "ignore") => new Promise((resolve4, reject) => {
-  let settled = false;
-  const fail = (error) => {
-    if (settled) return;
-    settled = true;
-    reject(error);
+var reviewCommandRequest = (request) => ({
+  cliArgs: request.cliArgs ?? [],
+  freshSessionArgv: REVIEW_SESSION_POLICIES[request.harness].freshSessionArgv,
+  workspace: request.workspace,
+  prompt: request.prompt
+});
+var buildExternalCommand = (request) => EXTERNAL_HARNESS_ADAPTERS[request.harness].buildCommand(taskCommandRequest(request));
+var buildReviewCommand = (request) => {
+  const cleanSession = validateReviewCliArgs(request.harness, request.cliArgs ?? []);
+  if (!cleanSession.ok) throw new Error(cleanSession.detail);
+  return {
+    ...EXTERNAL_HARNESS_ADAPTERS[request.harness].buildCommand(reviewCommandRequest(request)),
+    env: buildReviewEnvironment()
   };
+};
+var CAPTURED_STDOUT_LIMIT = 262144;
+var AUTHENTICATION_TIMEOUT_MS = 3e4;
+var runProcess = (executable, argv, cwd, stdin, outputMode = "ignore", timeoutMs, env) => new Promise((resolve4, reject) => {
+  let settled = false;
   const child = (0, import_child_process2.spawn)(executable, argv, {
     cwd,
     shell: false,
+    ...env ? { env } : {},
     stdio: [
       stdin === void 0 ? "ignore" : "pipe",
-      STDIO_SLOTS[outputMode].stdout,
+      outputMode === "capture" ? "pipe" : outputMode,
       outputMode === "ignore" ? "ignore" : "inherit"
     ]
   });
+  const timer = timeoutMs === void 0 ? void 0 : setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    child.kill("SIGKILL");
+    resolve4({ exitCode: 1, timedOut: true });
+  }, timeoutMs);
+  const settle = (outcome2) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    resolve4(outcome2);
+  };
+  const fail = (error) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    reject(error);
+  };
   let captured = "";
   if (outputMode === "capture") {
     child.stdout.setEncoding("utf8");
@@ -300,9 +419,7 @@ var runProcess = (executable, argv, cwd, stdin, outputMode = "ignore") => new Pr
   }
   child.once("error", fail);
   child.once("close", (code) => {
-    if (settled) return;
-    settled = true;
-    resolve4({
+    settle({
       exitCode: code ?? 1,
       ...outputMode === "capture" ? { stdout: captured } : {}
     });
@@ -316,44 +433,68 @@ var runProcess = (executable, argv, cwd, stdin, outputMode = "ignore") => new Pr
     }
   }
 });
-var dependencies = {
-  executableExists: executableOnPath,
-  authenticate: async (commandSpec, adapter) => {
-    try {
-      const result = await runProcess(
-        commandSpec.executable,
-        adapter.authenticationArgv(),
-        commandSpec.cwd
-      );
-      return result.exitCode === 0 ? { ok: true } : { ok: false, detail: `${commandSpec.executable} authentication check failed.` };
-    } catch (error) {
+var authenticateHarness = async (commandSpec, adapter2, timeoutMs = AUTHENTICATION_TIMEOUT_MS) => {
+  const executable = commandSpec.executable;
+  try {
+    const result = await runProcess(
+      executable,
+      adapter2.authenticationArgv(),
+      commandSpec.cwd,
+      void 0,
+      "ignore",
+      timeoutMs,
+      commandSpec.env
+    );
+    if (result.timedOut === true) {
       return {
         ok: false,
-        detail: `${commandSpec.executable} authentication check failed: ${errorMessage(error)}`
+        detail: `${executable} authentication check timed out after ${timeoutMs} ms and was terminated.`
       };
     }
-  },
+    return result.exitCode === 0 ? { ok: true } : {
+      ok: false,
+      detail: `${executable} authentication check failed: exited ${result.exitCode}.`
+    };
+  } catch (error) {
+    const code = error.code;
+    return {
+      ok: false,
+      detail: `${executable} authentication check could not launch${code === void 0 ? "" : ` (${code})`}: ${errorMessage(error)}`
+    };
+  }
+};
+var dependencies = {
+  executableExists: executableResolves,
+  authenticate: authenticateHarness,
   launch: (commandSpec, options) => runProcess(
     commandSpec.executable,
     commandSpec.argv,
     commandSpec.cwd,
     commandSpec.stdin,
-    options?.captureStdout === true ? "capture" : "inherit"
+    options?.captureStdout === true ? "capture" : "inherit",
+    void 0,
+    commandSpec.env
   )
 };
 var errorMessage = (error) => error instanceof Error ? error.message : String(error);
-var prepareLaunch = async (harness, input, active, guard) => {
-  const adapter = EXTERNAL_HARNESS_ADAPTERS[harness];
-  if (!adapter) {
+var dispatch = async (harness, reasoningEffort, buildCommand, overrides, label, captureStdout = false) => {
+  const active = { ...dependencies, ...overrides };
+  const adapter2 = EXTERNAL_HARNESS_ADAPTERS[harness];
+  if (!adapter2) {
     return {
       kind: "fallback",
       reason: "adapter-unavailable",
       detail: `No adapter is registered for ${harness}.`
     };
   }
-  const blocked = guard?.();
-  if (blocked) return blocked;
-  const executable = adapter.executable;
+  if (reasoningEffort !== void 0 && (harness === "cursor" || harness === "gemini" || harness === "copilot")) {
+    return {
+      kind: "fallback",
+      reason: "unsupported-reasoning-effort",
+      detail: `${harness} does not support a generic reasoning_effort override.`
+    };
+  }
+  const executable = adapter2.executable;
   if (!active.executableExists(executable)) {
     return {
       kind: "fallback",
@@ -361,21 +502,17 @@ var prepareLaunch = async (harness, input, active, guard) => {
       detail: `${executable} is unavailable.`
     };
   }
-  const commandSpec = adapter.buildCommand(input);
-  const authentication = await active.authenticate(commandSpec, adapter);
+  const commandSpec = buildCommand();
+  const authentication = await active.authenticate(commandSpec, adapter2);
   if (!authentication.ok) {
     return {
       kind: "fallback",
       reason: "authentication-failed",
-      detail: authentication.detail ?? `${adapter.executable} authentication check failed.`
+      detail: authentication.detail ?? `${adapter2.executable} authentication check failed.`
     };
   }
-  return { kind: "ready", command: commandSpec };
-};
-var launchPrepared = async (prepared, active, label, captureStdout = false) => {
-  if (prepared.kind === "fallback") return prepared;
   try {
-    const launched = await active.launch(prepared.command, { captureStdout });
+    const launched = await active.launch(commandSpec, { captureStdout });
     const stdout = launched.stdout === void 0 ? {} : { stdout: launched.stdout };
     return launched.exitCode === 0 ? { kind: "launched-success", exitCode: 0, ...stdout } : { kind: "launched-failure", exitCode: launched.exitCode, ...stdout };
   } catch (error) {
@@ -385,32 +522,27 @@ var launchPrepared = async (prepared, active, label, captureStdout = false) => {
     };
   }
 };
-var unsupportedReasoningEffort = (request) => request.reasoningEffort !== void 0 && (request.harness === "cursor" || request.harness === "gemini" || request.harness === "copilot") ? {
-  kind: "fallback",
-  reason: "unsupported-reasoning-effort",
-  detail: `${request.harness} does not support a generic reasoning_effort override.`
-} : void 0;
-var dispatchExternalTask = async (request, overrides = {}) => {
-  const active = { ...dependencies, ...overrides };
-  const prepared = await prepareLaunch(
-    request.harness,
-    taskCommandRequest(request),
-    active,
-    () => unsupportedReasoningEffort(request)
-  );
-  return launchPrepared(prepared, active, "task");
-};
+var dispatchExternalTask = async (request, overrides = {}) => dispatch(
+  request.harness,
+  request.reasoningEffort,
+  () => buildExternalCommand(request),
+  overrides,
+  "task"
+);
 
 // src/skill-scripts/shared/harness-availability.ts
 var import_crypto2 = require("crypto");
 var import_child_process3 = require("child_process");
-var fs4 = __toESM(require("fs"));
+var fs3 = __toESM(require("fs"));
 var os = __toESM(require("os"));
-var path5 = __toESM(require("path"));
+var path6 = __toESM(require("path"));
 
 // src/skill-scripts/shared/harness-configuration.ts
 var import_crypto = require("crypto");
-var fs3 = __toESM(require("fs"));
+var fs2 = __toESM(require("fs"));
+var path5 = __toESM(require("path"));
+
+// src/skill-scripts/shared/workspace-configuration.ts
 var path4 = __toESM(require("path"));
 
 // node_modules/js-yaml/dist/js-yaml.mjs
@@ -2872,168 +3004,78 @@ var CHOMPING_CLIP = CHOMPING_MODE.CLIP;
 var CHOMPING_STRIP = CHOMPING_MODE.STRIP;
 var CHOMPING_KEEP = CHOMPING_MODE.KEEP;
 
-// src/skill-scripts/shared/execution-routing.ts
-var fs2 = __toESM(require("fs"));
-var path3 = __toESM(require("path"));
-var WORKSPACE_CONFIG_RELPATH = path3.join("config", "config.yaml");
-var EXECUTION_ROUTING_SECTION = "execution_routing";
-var isPlainObject2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-var isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
-var validateTarget = (profileName, index, raw, supportedHarnesses, errors) => {
-  const label = `profile "${profileName}" models[${index}]`;
-  if (!isPlainObject2(raw)) {
-    errors.push(`${label} must be a mapping with an exact "model" string.`);
-    return null;
-  }
-  for (const key of Object.keys(raw)) {
-    if (key !== "model" && key !== "harness" && key !== "reasoning_effort") {
-      errors.push(`${label} has unknown key "${key}".`);
-      return null;
-    }
-  }
-  if (!isNonEmptyString(raw.model)) {
-    errors.push(`${label} requires a non-empty exact "model" string.`);
-    return null;
-  }
-  const target = { model: raw.model };
-  if ("harness" in raw) {
-    if (!isNonEmptyString(raw.harness)) {
-      errors.push(`${label} "harness" must be a non-empty string when provided.`);
-      return null;
-    }
-    if (!supportedHarnesses.includes(raw.harness)) {
-      errors.push(`${label} harness "${raw.harness}" is not a supported harness.`);
-      return null;
-    }
-    target.harness = raw.harness;
-  }
-  if ("reasoning_effort" in raw) {
-    if (!isNonEmptyString(raw.reasoning_effort)) {
-      errors.push(`${label} "reasoning_effort" must be a non-empty string when provided.`);
-      return null;
-    }
-    target.reasoning_effort = raw.reasoning_effort;
-  }
-  return target;
+// src/skill-scripts/shared/task-frontmatter.ts
+var MAX_FRONTMATTER_BYTES = 64 * 1024;
+var OPENING_FENCE = /^---([^\r\n]*)\r?\n/;
+var CLOSING_FENCE = /^(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/m;
+var isPlainObject2 = (value) => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 };
-var validateProfile = (name, raw, supportedHarnesses, errors) => {
-  if (!isPlainObject2(raw)) {
-    errors.push(`profile "${name}" must be a mapping with "description" and "models".`);
-    return null;
+var hasYamlContent = (block) => block.split(/\r?\n/).some((line) => {
+  const trimmed = line.trim();
+  return trimmed !== "" && !trimmed.startsWith("#");
+});
+var splitFrontmatter = (markdown) => {
+  const offset = markdown.startsWith("\uFEFF") ? 1 : 0;
+  const source = markdown.slice(offset);
+  const opening = OPENING_FENCE.exec(source);
+  if (!opening) return { kind: "none" };
+  if ((opening[1] ?? "").trim() !== "") {
+    return {
+      kind: "invalid",
+      reason: "Executable or non-YAML frontmatter is not supported."
+    };
   }
-  if ("resolver" in raw) {
-    errors.push(
-      `profile "${name}" configures a per-profile resolver; only the single top-level "resolver" is supported.`
-    );
-    return null;
+  const rest = source.slice(opening[0].length);
+  const closing = CLOSING_FENCE.exec(rest);
+  if (!closing) {
+    return { kind: "invalid", reason: "Frontmatter has no closing fence." };
   }
-  for (const key of Object.keys(raw)) {
-    if (key !== "description" && key !== "models") {
-      errors.push(`profile "${name}" has unknown key "${key}".`);
-      return null;
-    }
-  }
-  if (!isNonEmptyString(raw.description)) {
-    errors.push(`profile "${name}" requires a non-empty LLM-facing "description".`);
-    return null;
-  }
-  if (!Array.isArray(raw.models) || raw.models.length === 0) {
-    errors.push(`profile "${name}" requires a non-empty ordered "models" array.`);
-    return null;
-  }
-  const targets = [];
-  for (let i = 0; i < raw.models.length; i += 1) {
-    const target = validateTarget(name, i, raw.models[i], supportedHarnesses, errors);
-    if (!target) return null;
-    targets.push(target);
-  }
-  return { name, description: raw.description.trim(), targets };
+  return {
+    kind: "block",
+    text: rest.slice(0, closing.index),
+    start: offset + opening[0].length,
+    bodyStart: offset + opening[0].length + closing.index + closing[0].length
+  };
 };
-var loadRoutingConfig = (strikethrooRoot, supportedHarnesses) => {
-  const configPath = path3.join(strikethrooRoot, WORKSPACE_CONFIG_RELPATH);
-  let contents;
-  try {
-    contents = fs2.readFileSync(configPath, "utf8");
-  } catch {
-    return { kind: "no-config" };
+var readYamlFrontmatter = (markdown) => {
+  const block = splitFrontmatter(markdown);
+  if (block.kind !== "block") return block;
+  if (Buffer.byteLength(block.text, "utf8") > MAX_FRONTMATTER_BYTES) {
+    return {
+      kind: "invalid",
+      reason: `Frontmatter exceeds the ${MAX_FRONTMATTER_BYTES}-byte limit.`
+    };
   }
-  const hasContent = contents.split(/\r?\n/).some((line) => {
-    const trimmed = line.trim();
-    return trimmed !== "" && !trimmed.startsWith("#");
-  });
-  if (!hasContent) return { kind: "disabled" };
-  let document;
+  if (!hasYamlContent(block.text)) return { kind: "data", data: {} };
+  let parsed;
   try {
-    document = load(contents);
+    parsed = load(block.text);
   } catch (error) {
     return {
       kind: "invalid",
-      errors: [
-        `config.yaml is not valid YAML: ${error instanceof Error ? error.message : String(error)}`
-      ]
+      reason: `Frontmatter is not valid YAML: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`
     };
   }
-  if (document === null || document === void 0) return { kind: "disabled" };
-  if (!isPlainObject2(document)) {
-    return { kind: "invalid", errors: ["config.yaml must be a YAML mapping."] };
+  if (!isPlainObject2(parsed)) {
+    return { kind: "invalid", reason: "Frontmatter must be a YAML mapping." };
   }
-  const section = document[EXECUTION_ROUTING_SECTION];
-  if (section === null || section === void 0) return { kind: "disabled" };
-  const errors = [];
-  if (!isPlainObject2(section)) {
+  return { kind: "data", data: parsed };
+};
+
+// src/skill-scripts/shared/workspace-configuration.ts
+var WORKSPACE_CONFIG_RELPATH = path4.join("config", "config.yaml");
+var parseWorkspaceConfiguration = (contents) => {
+  try {
+    return { kind: "document", document: hasYamlContent(contents) ? load(contents) : {} };
+  } catch (error) {
     return {
       kind: "invalid",
-      errors: [`config.yaml "${EXECUTION_ROUTING_SECTION}" must be a YAML mapping.`]
+      detail: `config.yaml is not valid YAML: ${error instanceof Error ? error.message : String(error)}`
     };
   }
-  for (const key of Object.keys(section)) {
-    if (key !== "enabled" && key !== "allow_external_harness_execution" && key !== "profiles" && key !== "resolver") {
-      errors.push(`${EXECUTION_ROUTING_SECTION} has unknown key "${key}".`);
-    }
-  }
-  if ("allow_external_harness_execution" in section && typeof section.allow_external_harness_execution !== "boolean") {
-    errors.push(
-      `${EXECUTION_ROUTING_SECTION} "allow_external_harness_execution" must be true or false.`
-    );
-  }
-  if ("enabled" in section) {
-    if (typeof section.enabled !== "boolean") {
-      errors.push(`${EXECUTION_ROUTING_SECTION} "enabled" must be true or false.`);
-      return { kind: "invalid", errors };
-    }
-    if (!section.enabled)
-      return errors.length > 0 ? { kind: "invalid", errors } : { kind: "disabled" };
-  }
-  const rawProfiles = "profiles" in section && section.profiles == null ? {} : section.profiles;
-  if (!("profiles" in section) || !isPlainObject2(rawProfiles)) {
-    errors.push(`${EXECUTION_ROUTING_SECTION} requires a "profiles" mapping.`);
-    return { kind: "invalid", errors };
-  }
-  const profiles = [];
-  for (const [name, rawProfile] of Object.entries(rawProfiles)) {
-    const profile = validateProfile(name, rawProfile, supportedHarnesses, errors);
-    if (profile) profiles.push(profile);
-  }
-  let resolverScript;
-  if ("resolver" in section) {
-    const resolver = section.resolver;
-    if (!isPlainObject2(resolver) || !isNonEmptyString(resolver.script)) {
-      errors.push('resolver must be a mapping with a non-empty "script" path.');
-    } else {
-      for (const key of Object.keys(resolver)) {
-        if (key !== "script") errors.push(`resolver has unknown key "${key}".`);
-      }
-      resolverScript = resolver.script;
-    }
-  }
-  if (errors.length > 0) return { kind: "invalid", errors };
-  if (profiles.length === 0) return { kind: "disabled" };
-  const config = {
-    allowExternalHarnessExecution: section.allow_external_harness_execution === true,
-    profiles
-  };
-  if (resolverScript !== void 0) config.resolverScript = resolverScript;
-  return { kind: "config", config };
 };
 
 // src/skill-scripts/shared/harness-configuration.ts
@@ -3090,10 +3132,10 @@ var validateHarnessEntry = (harness, raw, errors) => {
   return normalizeInvocation(harness, cliArgs);
 };
 var loadHarnessConfiguration = (strikethrooRoot) => {
-  const configPath = path4.join(strikethrooRoot, WORKSPACE_CONFIG_RELPATH);
+  const configPath = path5.join(strikethrooRoot, WORKSPACE_CONFIG_RELPATH);
   let contents;
   try {
-    contents = fs3.readFileSync(configPath, "utf8");
+    contents = fs2.readFileSync(configPath, "utf8");
   } catch (error) {
     if (error.code === "ENOENT") {
       return { kind: "config", config: emptyConfiguration() };
@@ -3105,17 +3147,9 @@ var loadHarnessConfiguration = (strikethrooRoot) => {
       ]
     };
   }
-  let document;
-  try {
-    document = load(contents);
-  } catch (error) {
-    return {
-      kind: "invalid",
-      errors: [
-        `config.yaml is not valid YAML: ${error instanceof Error ? error.message : String(error)}`
-      ]
-    };
-  }
+  const parsed = parseWorkspaceConfiguration(contents);
+  if (parsed.kind === "invalid") return { kind: "invalid", errors: [parsed.detail] };
+  const { document } = parsed;
   if (document === null || document === void 0) {
     return { kind: "config", config: emptyConfiguration() };
   }
@@ -3153,17 +3187,17 @@ var loadHarnessConfiguration = (strikethrooRoot) => {
 };
 
 // src/skill-scripts/shared/harness-availability.ts
-var AVAILABILITY_REGISTRY_VERSION = 4;
+var AVAILABILITY_REGISTRY_VERSION = 5;
 var AVAILABLE_TTL_MS = 30 * 60 * 1e3;
 var UNAVAILABLE_TTL_MS = 5 * 60 * 1e3;
 var PROBE_TIMEOUT_MS = 2e4;
-var AVAILABILITY_CACHE_RELATIVE_PATH = path5.join("runtime", "harness-availability.json");
+var AVAILABILITY_CACHE_RELATIVE_PATH = path6.join("runtime", "harness-availability.json");
 var CACHE_VERSION = 2;
 var availabilityDefinition = (harness) => {
-  const adapter = EXTERNAL_HARNESS_ADAPTERS[harness];
+  const adapter2 = EXTERNAL_HARNESS_ADAPTERS[harness];
   return {
-    executable: adapter.executable,
-    buildCommand: (cwd, cliArgs, prompt) => adapter.buildCommand({ cliArgs, workspace: cwd, prompt })
+    executable: adapter2.executable,
+    buildCommand: (cwd, cliArgs, prompt) => adapter2.buildCommand({ cliArgs, workspace: cwd, prompt })
   };
 };
 var HARNESS_AVAILABILITY_REGISTRY = Object.freeze(
@@ -3171,25 +3205,7 @@ var HARNESS_AVAILABILITY_REGISTRY = Object.freeze(
     SUPPORTED_HARNESSES.map((harness) => [harness, availabilityDefinition(harness)])
   )
 );
-var resolveExecutable = (executable) => {
-  const extensions = process.platform === "win32" ? ["", ...(process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";")] : [""];
-  const directories = /[\\/]/.test(executable) ? [""] : (process.env.PATH ?? "").split(path5.delimiter).filter(Boolean);
-  for (const directory of directories) {
-    for (const extension of extensions) {
-      const candidate = path5.resolve(directory, `${executable}${extension}`);
-      try {
-        fs4.accessSync(
-          candidate,
-          process.platform === "win32" ? fs4.constants.F_OK : fs4.constants.X_OK
-        );
-        if (fs4.statSync(candidate).isFile()) return fs4.realpathSync(candidate);
-      } catch {
-      }
-    }
-  }
-  return void 0;
-};
-var runProbe = (command2, timeoutMs) => new Promise((resolve4) => {
+var runProbe = (command, timeoutMs) => new Promise((resolve4) => {
   let stdout = "";
   let stderr = "";
   let settled = false;
@@ -3199,9 +3215,10 @@ var runProbe = (command2, timeoutMs) => new Promise((resolve4) => {
     settled = true;
     resolve4(result);
   };
-  const child = (0, import_child_process3.spawn)(command2.executable, command2.argv, {
-    cwd: command2.cwd,
+  const child = (0, import_child_process3.spawn)(command.executable, command.argv, {
+    cwd: command.cwd,
     shell: false,
+    ...command.env ? { env: command.env } : {},
     stdio: ["pipe", "pipe", "pipe"]
   });
   child.stdout?.setEncoding("utf8");
@@ -3228,7 +3245,7 @@ var runProbe = (command2, timeoutMs) => new Promise((resolve4) => {
     finish({ exitCode: code ?? 1, timedOut, stdout, stderr });
   });
   child.stdin?.on("error", () => void 0);
-  child.stdin?.end(command2.stdin);
+  child.stdin?.end(command.stdin);
 });
 var probeFailureReason = (probe) => {
   const reason = probe.timedOut ? `Harness readiness check timed out after ${PROBE_TIMEOUT_MS} ms.` : probe.error ? `Harness readiness check could not launch: ${probe.error}` : probe.exitCode !== 0 ? `Harness readiness check exited ${probe.exitCode}.` : "Harness exited 0 but did not create the required readiness file with the expected content.";
@@ -3240,7 +3257,7 @@ var probeFailureReason = (probe) => {
 };
 var defaultDependencies = {
   now: Date.now,
-  resolveExecutable,
+  resolveExecutable: resolveExecutablePath,
   runProbe
 };
 var isHarness = (value) => typeof value === "string" && SUPPORTED_HARNESSES.includes(value);
@@ -3252,7 +3269,7 @@ var isCacheEntry = (value) => {
 var emptyCache = () => ({ version: CACHE_VERSION, entries: [] });
 var readCache = (cachePath) => {
   try {
-    const parsed = JSON.parse(fs4.readFileSync(cachePath, "utf8"));
+    const parsed = JSON.parse(fs3.readFileSync(cachePath, "utf8"));
     if (!parsed || typeof parsed !== "object") return emptyCache();
     const record = parsed;
     if (record.version !== CACHE_VERSION || !Array.isArray(record.entries)) return emptyCache();
@@ -3262,7 +3279,7 @@ var readCache = (cachePath) => {
   }
 };
 var writeCache = (cachePath, entry) => {
-  fs4.mkdirSync(path5.dirname(cachePath), { recursive: true });
+  fs3.mkdirSync(path6.dirname(cachePath), { recursive: true });
   const cache = readCache(cachePath);
   const existingIndex = cache.entries.findIndex((candidate) => candidate.key === entry.key);
   if (existingIndex === -1) cache.entries.push(entry);
@@ -3271,23 +3288,25 @@ var writeCache = (cachePath, entry) => {
   }
   const temporary = `${cachePath}.${process.pid}.${(0, import_crypto2.randomUUID)()}.tmp`;
   try {
-    fs4.writeFileSync(temporary, `${JSON.stringify(cache, null, 2)}
+    fs3.writeFileSync(temporary, `${JSON.stringify(cache, null, 2)}
 `, { mode: 384 });
-    fs4.renameSync(temporary, cachePath);
+    fs3.renameSync(temporary, cachePath);
   } finally {
     try {
-      fs4.unlinkSync(temporary);
+      fs3.unlinkSync(temporary);
     } catch {
     }
   }
 };
-var cacheKey = (harness, executableIdentity, invocation) => (0, import_crypto2.createHash)("sha256").update(
+var cacheKey = (harness, executableIdentity, invocation, purpose) => (0, import_crypto2.createHash)("sha256").update(
   JSON.stringify({
     harness,
     executableIdentity,
     cliArgsHash: invocation.cliArgsHash,
     normalizationVersion: HARNESS_CONFIGURATION_NORMALIZATION_VERSION,
-    probeRegistryVersion: AVAILABILITY_REGISTRY_VERSION
+    probeRegistryVersion: AVAILABILITY_REGISTRY_VERSION,
+    purpose,
+    ...purpose === "review" ? { reviewSessionPolicyVersion: REVIEW_SESSION_POLICY_VERSION } : {}
   })
 ).digest("hex");
 var readinessEvidence = () => {
@@ -3302,7 +3321,7 @@ var readinessPrompt = (evidence) => `Run a shell command that creates ${evidence
 STRIKETHROO_READINESS=${JSON.stringify(evidence)}
 `;
 var initializeProbeWorkspace = () => {
-  const workspace = fs4.mkdtempSync(path5.join(os.tmpdir(), "strikethroo-harness-probe-"));
+  const workspace = fs3.mkdtempSync(path6.join(os.tmpdir(), "strikethroo-harness-probe-"));
   const initialized = (0, import_child_process3.spawnSync)("git", ["init", "--quiet"], {
     cwd: workspace,
     shell: false,
@@ -3310,13 +3329,13 @@ var initializeProbeWorkspace = () => {
     timeout: 5e3
   });
   if (initialized.status === 0 && !initialized.error) return workspace;
-  fs4.rmSync(workspace, { recursive: true, force: true });
+  fs3.rmSync(workspace, { recursive: true, force: true });
   return void 0;
 };
 var hasReadinessEvidence = (workspace, evidence) => {
-  const target = path5.join(workspace, evidence.file);
+  const target = path6.join(workspace, evidence.file);
   try {
-    return fs4.lstatSync(target).isFile() && fs4.readFileSync(target, "utf8") === evidence.content;
+    return fs3.lstatSync(target).isFile() && fs3.readFileSync(target, "utf8") === evidence.content;
   } catch {
     return false;
   }
@@ -3337,19 +3356,31 @@ var invocationFor = (request, harness) => {
 var checkHarnessAvailability = async (request, overrides = {}) => {
   const active = { ...defaultDependencies, ...overrides };
   const now = active.now();
-  if (request.harness === void 0 || request.harness === request.currentHarness) {
-    return {
-      harness: request.harness ?? request.currentHarness,
-      available: true,
-      observedAt: now,
-      expiresAt: now,
-      reason: "Native/current harness targets do not require a probe.",
-      source: "bypass"
-    };
-  }
+  const purpose = request.purpose ?? "task";
+  const bypass = (target) => ({
+    harness: target,
+    available: true,
+    observedAt: now,
+    expiresAt: now,
+    reason: "Native/current harness targets do not require a probe.",
+    source: "bypass"
+  });
   const harness = request.harness;
+  if (harness === void 0) {
+    return purpose === "review" ? outcome(
+      request.currentHarness,
+      false,
+      now,
+      "Review readiness requires an explicit harness."
+    ) : bypass(request.currentHarness);
+  }
+  if (purpose === "task" && harness === request.currentHarness) return bypass(harness);
   const invocation = invocationFor(request, harness);
   if (!invocation) return outcome(harness, false, now, "Harness configuration is invalid.");
+  if (purpose === "review") {
+    const cleanSession = validateReviewCliArgs(harness, invocation.cliArgs);
+    if (!cleanSession.ok) return outcome(harness, false, now, cleanSession.detail);
+  }
   const definition = HARNESS_AVAILABILITY_REGISTRY[harness];
   const executableIdentity = active.resolveExecutable(definition.executable);
   if (!executableIdentity)
@@ -3359,8 +3390,8 @@ var checkHarnessAvailability = async (request, overrides = {}) => {
       now,
       `Harness executable '${definition.executable}' was not found on PATH.`
     );
-  const key = cacheKey(harness, executableIdentity, invocation);
-  const cachePath = path5.join(request.strikethrooRoot, AVAILABILITY_CACHE_RELATIVE_PATH);
+  const key = cacheKey(harness, executableIdentity, invocation, purpose);
+  const cachePath = path6.join(request.strikethrooRoot, AVAILABILITY_CACHE_RELATIVE_PATH);
   const cached = readCache(cachePath).entries.find(
     (entry) => entry.key === key && entry.expiresAt > now
   );
@@ -3389,13 +3420,15 @@ var checkHarnessAvailability = async (request, overrides = {}) => {
   }
   try {
     const evidence = readinessEvidence();
-    const command2 = definition.buildCommand(
-      probeWorkspace,
-      invocation.cliArgs,
-      readinessPrompt(evidence)
-    );
+    const prompt = readinessPrompt(evidence);
+    const command = purpose === "review" ? buildReviewCommand({
+      harness,
+      cliArgs: invocation.cliArgs,
+      workspace: probeWorkspace,
+      prompt
+    }) : definition.buildCommand(probeWorkspace, invocation.cliArgs, prompt);
     const probe = await active.runProbe(
-      { ...command2, executable: executableIdentity },
+      { ...command, executable: executableIdentity },
       PROBE_TIMEOUT_MS
     );
     const available = probe.exitCode === 0 && !probe.timedOut && hasReadinessEvidence(probeWorkspace, evidence);
@@ -3408,59 +3441,163 @@ var checkHarnessAvailability = async (request, overrides = {}) => {
       )
     );
   } finally {
-    fs4.rmSync(probeWorkspace, { recursive: true, force: true });
+    fs3.rmSync(probeWorkspace, { recursive: true, force: true });
   }
 };
 
-// src/skill-scripts/shared/task-frontmatter.ts
-var MAX_FRONTMATTER_BYTES = 64 * 1024;
-var OPENING_FENCE = /^---([^\r\n]*)\r?\n/;
-var CLOSING_FENCE = /^(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/m;
-var isPlainObject4 = (value) => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+// src/skill-scripts/shared/execution-routing.ts
+var path7 = __toESM(require("path"));
+var fs4 = __toESM(require("fs"));
+var EXECUTION_ROUTING_SECTION = "execution_routing";
+var isPlainObject4 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
+var isExecutionProfileName = isNonEmptyString;
+var validateTarget = (profileName, index, raw, supportedHarnesses, errors) => {
+  const label = `profile "${profileName}" models[${index}]`;
+  if (!isPlainObject4(raw)) {
+    errors.push(`${label} must be a mapping with an exact "model" string.`);
+    return null;
+  }
+  for (const key of Object.keys(raw)) {
+    if (key !== "model" && key !== "harness" && key !== "reasoning_effort") {
+      errors.push(`${label} has unknown key "${key}".`);
+      return null;
+    }
+  }
+  if (!isNonEmptyString(raw.model)) {
+    errors.push(`${label} requires a non-empty exact "model" string.`);
+    return null;
+  }
+  const target = { model: raw.model };
+  if ("harness" in raw) {
+    if (!isNonEmptyString(raw.harness)) {
+      errors.push(`${label} "harness" must be a non-empty string when provided.`);
+      return null;
+    }
+    if (!supportedHarnesses.includes(raw.harness)) {
+      errors.push(`${label} harness "${raw.harness}" is not a supported harness.`);
+      return null;
+    }
+    target.harness = raw.harness;
+  }
+  if ("reasoning_effort" in raw) {
+    if (!isNonEmptyString(raw.reasoning_effort)) {
+      errors.push(`${label} "reasoning_effort" must be a non-empty string when provided.`);
+      return null;
+    }
+    target.reasoning_effort = raw.reasoning_effort;
+  }
+  return target;
 };
-var hasYamlContent = (block) => block.split(/\r?\n/).some((line) => {
-  const trimmed = line.trim();
-  return trimmed !== "" && !trimmed.startsWith("#");
-});
-var readYamlFrontmatter = (markdown) => {
-  const source = markdown.startsWith("\uFEFF") ? markdown.slice(1) : markdown;
-  const opening = OPENING_FENCE.exec(source);
-  if (!opening) return { kind: "none" };
-  if ((opening[1] ?? "").trim() !== "") {
-    return {
-      kind: "invalid",
-      reason: "Executable or non-YAML frontmatter is not supported."
-    };
+var validateProfile = (name, raw, supportedHarnesses, errors) => {
+  if (!isExecutionProfileName(name)) {
+    errors.push("execution profile names must be non-empty strings.");
+    return null;
   }
-  const rest = source.slice(opening[0].length);
-  const closing = CLOSING_FENCE.exec(rest);
-  if (!closing) {
-    return { kind: "invalid", reason: "Frontmatter has no closing fence." };
+  if (!isPlainObject4(raw)) {
+    errors.push(`profile "${name}" must be a mapping with "description" and "models".`);
+    return null;
   }
-  const block = rest.slice(0, closing.index);
-  if (Buffer.byteLength(block, "utf8") > MAX_FRONTMATTER_BYTES) {
-    return {
-      kind: "invalid",
-      reason: `Frontmatter exceeds the ${MAX_FRONTMATTER_BYTES}-byte limit.`
-    };
+  if ("resolver" in raw) {
+    errors.push(
+      `profile "${name}" configures a per-profile resolver; only the single top-level "resolver" is supported.`
+    );
+    return null;
   }
-  if (!hasYamlContent(block)) return { kind: "data", data: {} };
-  let parsed;
+  for (const key of Object.keys(raw)) {
+    if (key !== "description" && key !== "models") {
+      errors.push(`profile "${name}" has unknown key "${key}".`);
+      return null;
+    }
+  }
+  if (!isNonEmptyString(raw.description)) {
+    errors.push(`profile "${name}" requires a non-empty LLM-facing "description".`);
+    return null;
+  }
+  if (!Array.isArray(raw.models) || raw.models.length === 0) {
+    errors.push(`profile "${name}" requires a non-empty ordered "models" array.`);
+    return null;
+  }
+  const targets = [];
+  for (let i = 0; i < raw.models.length; i += 1) {
+    const target = validateTarget(name, i, raw.models[i], supportedHarnesses, errors);
+    if (!target) return null;
+    targets.push(target);
+  }
+  return { name, description: raw.description.trim(), targets };
+};
+var loadRoutingConfig = (strikethrooRoot, supportedHarnesses) => {
+  const configPath = path7.join(strikethrooRoot, WORKSPACE_CONFIG_RELPATH);
+  let contents;
   try {
-    parsed = load(block);
-  } catch (error) {
+    contents = fs4.readFileSync(configPath, "utf8");
+  } catch {
+    return { kind: "no-config" };
+  }
+  const parsed = parseWorkspaceConfiguration(contents);
+  if (parsed.kind === "invalid") return { kind: "invalid", errors: [parsed.detail] };
+  const { document } = parsed;
+  if (document === null || document === void 0) return { kind: "disabled" };
+  if (!isPlainObject4(document)) {
+    return { kind: "invalid", errors: ["config.yaml must be a YAML mapping."] };
+  }
+  const section = document[EXECUTION_ROUTING_SECTION];
+  if (section === null || section === void 0) return { kind: "disabled" };
+  const errors = [];
+  if (!isPlainObject4(section)) {
     return {
       kind: "invalid",
-      reason: `Frontmatter is not valid YAML: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`
+      errors: [`config.yaml "${EXECUTION_ROUTING_SECTION}" must be a YAML mapping.`]
     };
   }
-  if (!isPlainObject4(parsed)) {
-    return { kind: "invalid", reason: "Frontmatter must be a YAML mapping." };
+  for (const key of Object.keys(section)) {
+    if (key !== "enabled" && key !== "allow_external_harness_execution" && key !== "profiles" && key !== "resolver") {
+      errors.push(`${EXECUTION_ROUTING_SECTION} has unknown key "${key}".`);
+    }
   }
-  return { kind: "data", data: parsed };
+  if ("allow_external_harness_execution" in section && typeof section.allow_external_harness_execution !== "boolean") {
+    errors.push(
+      `${EXECUTION_ROUTING_SECTION} "allow_external_harness_execution" must be true or false.`
+    );
+  }
+  if ("enabled" in section) {
+    if (typeof section.enabled !== "boolean") {
+      errors.push(`${EXECUTION_ROUTING_SECTION} "enabled" must be true or false.`);
+      return { kind: "invalid", errors };
+    }
+    if (!section.enabled)
+      return errors.length > 0 ? { kind: "invalid", errors } : { kind: "disabled" };
+  }
+  const rawProfiles = "profiles" in section && section.profiles == null ? {} : section.profiles;
+  if (!("profiles" in section) || !isPlainObject4(rawProfiles)) {
+    errors.push(`${EXECUTION_ROUTING_SECTION} requires a "profiles" mapping.`);
+    return { kind: "invalid", errors };
+  }
+  const profiles = [];
+  for (const [name, rawProfile] of Object.entries(rawProfiles)) {
+    const profile = validateProfile(name, rawProfile, supportedHarnesses, errors);
+    if (profile) profiles.push(profile);
+  }
+  let resolverScript;
+  if ("resolver" in section) {
+    const resolver = section.resolver;
+    if (!isPlainObject4(resolver) || !isNonEmptyString(resolver.script)) {
+      errors.push('resolver must be a mapping with a non-empty "script" path.');
+    } else {
+      for (const key of Object.keys(resolver)) {
+        if (key !== "script") errors.push(`resolver has unknown key "${key}".`);
+      }
+      resolverScript = resolver.script;
+    }
+  }
+  if (errors.length > 0) return { kind: "invalid", errors };
+  if (profiles.length === 0) return { kind: "disabled" };
+  const config = {
+    allowExternalHarnessExecution: section.allow_external_harness_execution === true,
+    profiles
+  };
+  if (resolverScript !== void 0) config.resolverScript = resolverScript;
+  return { kind: "config", config };
 };
 
 // src/skill-scripts/dispatch-task-execution.ts
@@ -3470,32 +3607,25 @@ var emit = (result, exitCode) => {
   process.exit(exitCode);
 };
 var errorMessage2 = (error) => error instanceof Error ? error.message : String(error);
-var encodeHandoff = (route) => Buffer.from(JSON.stringify({ version: 1, ...route }), "utf8").toString("base64url");
+var taskDigest = (markdown) => (0, import_crypto3.createHash)("sha256").update(markdown).digest("hex");
+var encodeHandoff = (request) => Buffer.from(JSON.stringify(request), "utf8").toString("base64url");
 var decodeHandoff = (encoded) => {
-  let raw;
+  let value;
   try {
-    raw = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    value = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
   } catch {
-    throw new Error("Resolved execution handoff is not valid encoded JSON.");
+    throw new Error("Resolved execution request is not valid encoded JSON.");
   }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("Resolved execution handoff must be an object.");
-  }
-  const value = raw;
-  const allowed = ["version", "kind", "harness", "model", "reasoningEffort"];
-  if (Object.keys(value).some((key) => !allowed.includes(key)) || value.version !== 1 || value.kind !== "external-override" || typeof value.harness !== "string" || !SUPPORTED_HARNESSES.includes(value.harness) || typeof value.model !== "string" || value.model.length === 0 || "reasoningEffort" in value && typeof value.reasoningEffort !== "string") {
-    throw new Error("Resolved execution handoff has an invalid shape.");
-  }
-  return value;
-};
-var externalRoute = (harness, model, reasoningEffort) => {
-  const exact = {
-    kind: "external-override",
-    harness,
-    model,
-    ...reasoningEffort === void 0 ? {} : { reasoningEffort }
-  };
-  return { ...exact, handoff: encodeHandoff(exact) };
+  const strings = ["harness", "model", "workspace", "planId", "taskId", "taskFile", "taskDigest"];
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => ![...strings, "cliArgs", "reasoningEffort"].includes(key)) || strings.some((key) => {
+    const field = value[key];
+    return typeof field !== "string" || field.trim() === "" || field.includes("\0");
+  }))
+    throw new Error("Resolved execution request has an invalid shape.");
+  const request = value;
+  if (!SUPPORTED_HARNESSES.includes(request.harness) || !path8.isAbsolute(request.workspace) || !path8.isAbsolute(request.taskFile) || !/^[a-f0-9]{64}$/.test(request.taskDigest) || !Array.isArray(request.cliArgs) || request.cliArgs.some((arg) => typeof arg !== "string" || arg === "" || arg.includes("\0")) || "reasoningEffort" in request && (typeof request.reasoningEffort !== "string" || request.reasoningEffort.trim() === "" || request.reasoningEffort.includes("\0")))
+    throw new Error("Resolved execution request has an invalid shape.");
+  return request;
 };
 var readProfile = (taskMarkdown) => {
   const frontmatter = readYamlFrontmatter(taskMarkdown);
@@ -3505,7 +3635,7 @@ var readProfile = (taskMarkdown) => {
     return { kind: "profile" };
   }
   const profile = frontmatter.data.execution_profile;
-  if (typeof profile !== "string" || profile.trim() === "") {
+  if (!isExecutionProfileName(profile)) {
     return { kind: "rejected", reason: "execution_profile must be a non-empty string." };
   }
   return { kind: "profile", profile };
@@ -3533,7 +3663,7 @@ var resolveDispatchRoute = async (request) => {
     const selection = selectDispatchTarget(configResult.config, profile, avoided, {
       currentHarness: request.currentHarness,
       projectRoot: request.workspace,
-      taskId: request.taskId
+      taskId: Number(request.taskId)
     });
     if (selection.kind === "native-default") {
       return { kind: "fallback", reason: selection.reason, detail: selection.detail };
@@ -3565,7 +3695,24 @@ var resolveDispatchRoute = async (request) => {
       invocation
     });
     if (availability.available) {
-      return externalRoute(harness, selection.target.model, selection.target.reasoning_effort);
+      const execution = {
+        harness,
+        cliArgs: invocation.cliArgs,
+        model: selection.target.model,
+        ...selection.target.reasoning_effort === void 0 ? {} : { reasoningEffort: selection.target.reasoning_effort },
+        workspace: request.workspace,
+        planId: request.planId,
+        taskId: request.taskId,
+        taskFile: request.taskFile,
+        taskDigest: taskDigest(request.taskMarkdown)
+      };
+      return {
+        kind: "external-override",
+        harness,
+        model: execution.model,
+        ...execution.reasoningEffort === void 0 ? {} : { reasoningEffort: execution.reasoningEffort },
+        handoff: encodeHandoff(execution)
+      };
     }
     unavailable.push(
       `${harness} (${availability.source === "probe" ? "fresh" : availability.source})`
@@ -3579,70 +3726,47 @@ var resolveDispatchRoute = async (request) => {
   };
 };
 var main = async () => {
-  const args = process.argv.slice(2);
-  const mode = args.shift();
-  if (mode !== "resolve" && mode !== "execute" || args.length < (mode === "execute" ? 6 : 5)) {
+  const [mode, ...args] = process.argv.slice(2);
+  if (mode === "execute" && args.length === 1) {
+    const request = decodeHandoff(args[0]);
+    const taskMarkdown = fs5.readFileSync(request.taskFile, "utf8");
+    if (taskDigest(taskMarkdown) !== request.taskDigest) {
+      throw new Error(
+        `Task ${request.taskId} changed after route resolution. This request cannot be executed.`
+      );
+    }
+    const { taskDigest: _digest, ...invocation } = request;
+    const result = await dispatchExternalTask({ ...invocation, taskMarkdown });
+    emit(
+      result,
+      result.kind === "infrastructure-failure" ? 2 : result.kind === "launched-failure" ? 1 : 0
+    );
+  }
+  if (mode !== "resolve" || args.length !== 5) {
     emit(
       {
         kind: "infrastructure-failure",
-        detail: "Usage: dispatch-task-execution.cjs resolve <task-file> <current-harness> <workspace> <plan-id> <task-id> | execute <handoff> <task-file> <current-harness> <workspace> <plan-id> <task-id>"
+        detail: "Usage: dispatch-task-execution.cjs resolve <task-file> <current-harness> <workspace> <plan-id> <task-id> | execute <handoff>"
       },
       2
     );
   }
-  const handoffArg = mode === "execute" ? args.shift() : void 0;
-  const [taskFile, currentHarnessRaw, workspace, planId, taskId] = args;
-  if (!taskFile || !currentHarnessRaw || !workspace || !planId || !taskId || !SUPPORTED_HARNESSES.includes(currentHarnessRaw)) {
+  const [taskFile, currentHarness, workspace, planId, taskId] = args;
+  if (!args.every(Boolean) || !planId.trim() || !taskId.trim() || !SUPPORTED_HARNESSES.includes(currentHarness)) {
     emit({ kind: "infrastructure-failure", detail: "Task dispatch arguments are invalid." }, 2);
   }
-  const validTaskFile = taskFile;
-  const validCurrentHarness = currentHarnessRaw;
-  const validWorkspace = workspace;
-  const validPlanId = planId;
-  const validTaskId = taskId;
-  const taskPath = path6.resolve(validTaskFile);
-  const taskMarkdown = fs5.readFileSync(taskPath, "utf8");
-  if (mode === "resolve") {
-    const route = await resolveDispatchRoute({
-      taskMarkdown,
-      currentHarness: validCurrentHarness,
-      workspace: path6.resolve(validWorkspace),
-      strikethrooRoot: path6.join(path6.resolve(validWorkspace), ".ai", "strikethroo"),
-      taskId: Number(validTaskId)
-    });
-    emit(route, route.kind === "infrastructure-failure" ? 2 : 0);
-  }
-  const handoff = decodeHandoff(handoffArg);
-  const executionConfiguration = loadHarnessConfiguration(
-    path6.join(path6.resolve(validWorkspace), ".ai", "strikethroo")
-  );
-  if (executionConfiguration.kind === "invalid") {
-    return emit(
-      {
-        kind: "infrastructure-failure",
-        detail: `Harness invocation configuration is invalid: ${executionConfiguration.errors.join(
-          " "
-        )}`
-      },
-      2
-    );
-  }
-  const routed = {
-    harness: handoff.harness,
-    cliArgs: executionConfiguration.config[handoff.harness].cliArgs,
-    model: handoff.model,
-    ...handoff.reasoningEffort === void 0 ? {} : { reasoningEffort: handoff.reasoningEffort },
-    workspace: path6.resolve(validWorkspace),
-    planId: validPlanId,
-    taskId: validTaskId,
+  const taskPath = path8.resolve(taskFile);
+  const projectRoot = path8.resolve(workspace);
+  const route = await resolveDispatchRoute({
+    taskMarkdown: fs5.readFileSync(taskPath, "utf8"),
     taskFile: taskPath,
-    taskMarkdown
-  };
-  const result = await dispatchExternalTask(routed);
-  emit(
-    result,
-    result.kind === "infrastructure-failure" ? 2 : result.kind === "launched-failure" ? 1 : 0
-  );
+    currentHarness,
+    workspace: projectRoot,
+    strikethrooRoot: path8.join(projectRoot, ".ai", "strikethroo"),
+    planId,
+    taskId
+  });
+  emit(route, route.kind === "infrastructure-failure" ? 2 : 0);
 };
 main().catch((error) => {
   emit(
